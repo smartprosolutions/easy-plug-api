@@ -1,0 +1,125 @@
+{
+  "users": {
+    "userId": "PK, uuid, default(uuidv4())",
+    "title": "string",
+    "firstName": "string",
+    "lastName": "string",
+    "email": "string, unique",
+    "idNumber": "string",
+    "passwordHash": "string",
+    "phone": "string",
+    "status": "string",
+    "userType": "string",
+    "createdAt": "datetime",
+    "updatedAt": "datetime"
+  },
+  "sellerInfo": {
+    "sellerId": "PK, uuid, default(uuidv4())",
+    "userId": "FK -> users.userId",
+    "addressId": "FK -> address.addressId",
+    "businessName": "string",
+    "businessEmail": "string",
+    "businessRegistrationNumber": "string",
+    "businessPicture": "string",
+    "verified": "boolean",
+    "status": "string",
+    "createdAt": "datetime",
+    "updatedAt": "datetime"
+  },
+  "address": {
+    "addressId": "PK, uuid, default(uuidv4())",
+    "userId": "FK -> users.userId/sellerId",
+    "latitude": "decimal(10,8)",
+    "longitude": "decimal(11,8)",
+    "streetNumber": "string",
+    "streetName": "string",
+    "suburb": "string",
+    "city": "string",
+    "province": "string",
+    "country": "string",
+    "postalCode": "string",
+    "createdAt": "datetime",
+    "updatedAt": "datetime"
+  },
+  "listings": {
+    "listingId": "PK, uuid, default(uuidv4())",
+    "sellerId": "FK -> users.userId/sellerId",
+    "title": "string",
+    "description": "text",
+    "price": "decimal(10,2)",
+    "category": "string",
+    "isAdvertisement": "boolean",
+    "status": "string",
+    "createdAt": "datetime",
+    "updatedAt": "datetime",
+    "isSeen": "boolean"
+  },
+  "subscriptions": {
+    "subscriptionId": "PK, int, auto_increment",
+    "name": "string",
+    "durationInHours": "int",
+    "price": "decimal(10,2)",
+    "description": "text",
+    "createdAt": "datetime",
+    "updatedAt": "datetime"
+  },
+  "sellerSubscription": {
+    "sellerSubscriptionId": "PK, int, auto_increment",
+    "sellerId": "FK -> users.userId",
+    "listingId": "FK -> listings.listingId",
+    "subscriptionId": "FK -> subscriptions.subscriptionId",
+    "startDate": "datetime",
+    "endDate": "datetime",
+    "createdAt": "datetime",
+    "updatedAt": "datetime"
+  },
+  "ratings": {
+    "ratingId": "PK, int, auto_increment",
+    "sellerId": "FK -> users.userId",
+    "userId": "FK -> listings.listingId",
+    "rating": "int",
+    "comment": "text",
+    "createdAt": "datetime",
+    "updatedAt": "datetime"
+  },
+
+  "chats": {
+    "chatId": "PK, int, auto_increment",
+    "listingId": "FK -> listings.listingId",
+    "buyerId": "FK -> users.userId",
+    "sellerId": "FK -> users.userId",
+    "createdAt": "datetime",
+    "updatedAt": "datetime"
+  },
+  "chatMessages": {
+    "messageId": "PK, int, auto_increment",
+    "chatId": "FK -> chats.chatId",
+    "senderId": "FK -> users.userId",
+    "receiverId": "FK -> users.userId",
+    "message": "text",
+    "imaages": "array(text)",
+    "isRead": "boolean",
+    "createdAt": "datetime",
+    "updatedAt": "datetime"
+  },
+  "transactions": {
+    "transactionId": "PK, int, auto_increment",
+    "buyerId": "FK -> users.userId",
+    "sellerId": "FK -> users.userId",
+    "listingId": "FK -> listings.listingId",
+    "amount": "decimal(10,2)",
+    "status": "string",
+    "otpCode": "string",
+    "createdAt": "datetime",
+    "releasedAt": "datetime"
+  },
+  "payments": {
+    "paymentId": "PK, int, auto_increment",
+    "transactionId": "FK -> transactions.transactionId",
+    "paymentMethod": "string",
+    "referenceNumber": "string, unique",
+    "status": "string",
+    "amount": "decimal(10,2)",
+    "paidAt": "datetime"
+  }
+}
