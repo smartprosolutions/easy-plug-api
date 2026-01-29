@@ -61,7 +61,16 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ARRAY(DataTypes.STRING),
         allowNull: true
       },
-
+      keyFeatures: {
+        type: DataTypes.ARRAY(DataTypes.STRING),
+        allowNull: true,
+        defaultValue: []
+      },
+      views: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+      },
       isAdvertisement: {
         type: DataTypes.BOOLEAN,
         allowNull: false

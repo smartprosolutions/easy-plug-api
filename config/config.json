@@ -1,9 +1,9 @@
 {
   "development": {
-    "username": "easyplug_db_user",
-    "password": "uNaTTa0OgkgJsHg9WnQ22ZPacaCFyvK3",
+    "username": "backend_user",
+    "password": "postgres_local",
     "database": "easyplug_db",
-    "host": "dpg-d3nv0vi4d50c739v4jhg-a.singapore-postgres.render.com",
+    "host": "172.29.70.232",
     "dialect": "postgres",
     "port": 5432,
     "dialectOptions": {

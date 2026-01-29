@@ -4,10 +4,14 @@ const {
   users: User,
   sellerSubscription: SellerSubscription,
   subscriptions: Subscription,
-  address: Address
+  address: Address,
+  ratings: Rating,
+  wishlist: Wishlist,
+  priceHistory: PriceHistory
 } = db;
 const { Op } = require("sequelize");
 const { fail } = require("../utils/response");
+const { logActivity } = require("../middleware/activityLogger");
 const path = require("path");
 const fs = require("fs");
 
@@ -31,6 +35,12 @@ async function listListings(req, res, next) {
     // require authenticated user so we can return listings the user has not seen
     const userId = req.user && req.user.id;
     if (!userId) return fail(res, "User not authenticated", 401);
+
+    // Get optional location parameters for proximity sorting
+    const { latitude, longitude, maxDistance } = req.query;
+    const userLat = latitude ? parseFloat(latitude) : null;
+    const userLon = longitude ? parseFloat(longitude) : null;
+    const maxDist = maxDistance ? parseFloat(maxDistance) : null;
 
     // fetch candidate listings (not seen)
     const candidates = await Listing.findAll({
@@ -81,15 +91,55 @@ async function listListings(req, res, next) {
       ]
     });
 
-    const filtered = candidates;
+    let filtered = candidates;
 
-    // split into ads and standard, newest first
-    const ads = filtered
-      .filter((l) => !!l.isAdvertisement)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    const standard = filtered
-      .filter((l) => !l.isAdvertisement)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // Calculate distances and filter by maxDistance if location provided
+    if (userLat !== null && userLon !== null) {
+      filtered = filtered.map(listing => {
+        if (listing.seller && listing.seller.addresses && listing.seller.addresses.length > 0) {
+          const sellerAddr = listing.seller.addresses[0];
+          if (sellerAddr.latitude && sellerAddr.longitude) {
+            const distance = haversineDistanceKm(
+              userLat,
+              userLon,
+              parseFloat(sellerAddr.latitude),
+              parseFloat(sellerAddr.longitude)
+            );
+            listing.dataValues.distance = Math.round(distance * 10) / 10;
+            return listing;
+          }
+        }
+        listing.dataValues.distance = null;
+        return listing;
+      });
+
+      // Filter by maxDistance if specified
+      if (maxDist !== null) {
+        filtered = filtered.filter(l => l.dataValues.distance !== null && l.dataValues.distance <= maxDist);
+      }
+    }
+
+    // split into ads and standard
+    let ads = filtered.filter((l) => !!l.isAdvertisement);
+    let standard = filtered.filter((l) => !l.isAdvertisement);
+
+    // Sort by distance if location provided, otherwise by date
+    if (userLat !== null && userLon !== null) {
+      ads = ads.sort((a, b) => {
+        const distA = a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+        const distB = b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+        return distA - distB;
+      });
+      standard = standard.sort((a, b) => {
+        const distA = a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+        const distB = b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+        return distA - distB;
+      });
+    } else {
+      // Default sort by newest first
+      ads = ads.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      standard = standard.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
 
     // pagination pattern per page: 8 ads, 24 standard, 8 ads
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
@@ -109,7 +159,13 @@ async function listListings(req, res, next) {
       counts: {
         adsTotal: ads.length,
         standardTotal: standard.length
-      }
+      },
+      location: userLat && userLon ? {
+        latitude: userLat,
+        longitude: userLon,
+        maxDistance: maxDist,
+        sortedByDistance: true
+      } : null
     });
   } catch (err) {
     next(err);
@@ -122,9 +178,19 @@ async function listAdListings(req, res, next) {
     const userId = req.user && req.user.id;
     if (!userId) return fail(res, "User not authenticated", 401);
 
+    // Get optional location parameters for proximity sorting
+    const { latitude, longitude, maxDistance } = req.query;
+    const userLat = latitude ? parseFloat(latitude) : null;
+    const userLon = longitude ? parseFloat(longitude) : null;
+    const maxDist = maxDistance ? parseFloat(maxDistance) : null;
+
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
     const pageSize = 8;
-    const offset = (page - 1) * pageSize;
+
+    // Fetch all matching listings (we'll sort and paginate in memory if using location)
+    const fetchAll = userLat !== null && userLon !== null;
+    const offset = fetchAll ? 0 : (page - 1) * pageSize;
+    const limit = fetchAll ? undefined : pageSize;
 
     const { rows, count } = await Listing.findAndCountAll({
       where: {
@@ -175,33 +241,92 @@ async function listAdListings(req, res, next) {
           ]
         }
       ],
-      order: [["createdAt", "DESC"]],
-      limit: pageSize,
-      offset
+      order: userLat === null ? [["createdAt", "DESC"]] : [],
+      limit,
+      offset,
+      distinct: true
     });
+
+    let listings = rows;
+    let totalCount = count;
+
+    // Calculate distances and sort by proximity if location provided
+    if (userLat !== null && userLon !== null) {
+      listings = listings.map(listing => {
+        if (listing.seller && listing.seller.addresses && listing.seller.addresses.length > 0) {
+          const sellerAddr = listing.seller.addresses[0];
+          if (sellerAddr.latitude && sellerAddr.longitude) {
+            const distance = haversineDistanceKm(
+              userLat,
+              userLon,
+              parseFloat(sellerAddr.latitude),
+              parseFloat(sellerAddr.longitude)
+            );
+            listing.dataValues.distance = Math.round(distance * 10) / 10;
+            return listing;
+          }
+        }
+        listing.dataValues.distance = null;
+        return listing;
+      });
+
+      // Filter by maxDistance if specified
+      if (maxDist !== null) {
+        listings = listings.filter(l => l.dataValues.distance !== null && l.dataValues.distance <= maxDist);
+        totalCount = listings.length;
+      }
+
+      // Sort by distance (nearest first)
+      listings.sort((a, b) => {
+        const distA = a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+        const distB = b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+        return distA - distB;
+      });
+
+      // Paginate in memory
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize;
+      listings = listings.slice(start, end);
+    }
 
     return res.json({
       success: true,
-      listings: rows,
+      listings,
       page,
       pageSize,
-      total: count,
-      totalPages: Math.ceil(count / pageSize)
+      total: totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      location: userLat && userLon ? {
+        latitude: userLat,
+        longitude: userLon,
+        maxDistance: maxDist,
+        sortedByDistance: true
+      } : null
     });
   } catch (err) {
     next(err);
   }
 }
 
-// Standard: list only non-advertisements, 16 per page
+// Standard: list only non-advertisements, 20 per page
 async function listStandardListings(req, res, next) {
   try {
     const userId = req.user && req.user.id;
     if (!userId) return fail(res, "User not authenticated", 401);
 
+    // Get optional location parameters for proximity sorting
+    const { latitude, longitude, maxDistance } = req.query;
+    const userLat = latitude ? parseFloat(latitude) : null;
+    const userLon = longitude ? parseFloat(longitude) : null;
+    const maxDist = maxDistance ? parseFloat(maxDistance) : null;
+
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
-    const pageSize = 16;
-    const offset = (page - 1) * pageSize;
+    const pageSize = 20;
+
+    // Fetch all matching listings (we'll sort and paginate in memory if using location)
+    const fetchAll = userLat !== null && userLon !== null;
+    const offset = fetchAll ? 0 : (page - 1) * pageSize;
+    const limit = fetchAll ? undefined : pageSize;
 
     const { rows, count } = await Listing.findAndCountAll({
       where: {
@@ -252,18 +377,67 @@ async function listStandardListings(req, res, next) {
           ]
         }
       ],
-      order: [["createdAt", "DESC"]],
-      limit: pageSize,
-      offset
+      order: userLat === null ? [["createdAt", "DESC"]] : [],
+      limit,
+      offset,
+      distinct: true
     });
+
+    let listings = rows;
+    let totalCount = count;
+
+    // Calculate distances and sort by proximity if location provided
+    if (userLat !== null && userLon !== null) {
+      listings = listings.map(listing => {
+        if (listing.seller && listing.seller.addresses && listing.seller.addresses.length > 0) {
+          const sellerAddr = listing.seller.addresses[0];
+          if (sellerAddr.latitude && sellerAddr.longitude) {
+            const distance = haversineDistanceKm(
+              userLat,
+              userLon,
+              parseFloat(sellerAddr.latitude),
+              parseFloat(sellerAddr.longitude)
+            );
+            listing.dataValues.distance = Math.round(distance * 10) / 10;
+            return listing;
+          }
+        }
+        listing.dataValues.distance = null;
+        return listing;
+      });
+
+      // Filter by maxDistance if specified
+      if (maxDist !== null) {
+        listings = listings.filter(l => l.dataValues.distance !== null && l.dataValues.distance <= maxDist);
+        totalCount = listings.length;
+      }
+
+      // Sort by distance (nearest first)
+      listings.sort((a, b) => {
+        const distA = a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+        const distB = b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+        return distA - distB;
+      });
+
+      // Paginate in memory
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize;
+      listings = listings.slice(start, end);
+    }
 
     return res.json({
       success: true,
-      listings: rows,
+      listings,
       page,
       pageSize,
-      total: count,
-      totalPages: Math.ceil(count / pageSize)
+      total: totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      location: userLat && userLon ? {
+        latitude: userLat,
+        longitude: userLon,
+        maxDistance: maxDist,
+        sortedByDistance: true
+      } : null
     });
   } catch (err) {
     next(err);
@@ -295,6 +469,8 @@ async function sellerListListings(req, res, next) {
 async function getListing(req, res, next) {
   try {
     const { id } = req.params;
+    const userId = req.user && req.user.id;
+
     const item = await Listing.findByPk(id, {
       include: [
         {
@@ -325,7 +501,21 @@ async function getListing(req, res, next) {
         .status(404)
         .json({ success: false, message: "Listing not found" });
 
-    // Attach the latest address for the seller (uploader)
+    // Increment view count (don't count seller's own views)
+    if (!userId || userId !== item.sellerId) {
+      item.views = (item.views || 0) + 1;
+      await item.save();
+
+      // Log view activity if user is authenticated
+      if (userId && req) {
+        logActivity(userId, "view_listing", "listing", id, req, {
+          listingTitle: item.title,
+          listingPrice: item.price
+        });
+      }
+    }
+
+    // Attach the latest address for the seller
     if (item.sellerId) {
       const latestAddress = await Address.findOne({
         where: { userId: item.sellerId },
@@ -334,6 +524,64 @@ async function getListing(req, res, next) {
       if (latestAddress) {
         item.dataValues.address = latestAddress;
       }
+    }
+
+    // Get seller rating (average)
+    const ratingData = await Rating.findAll({
+      where: { sellerId: item.sellerId },
+      attributes: [
+        [db.sequelize.fn("AVG", db.sequelize.col("rating")), "averageRating"],
+        [db.sequelize.fn("COUNT", db.sequelize.col("ratingId")), "totalRatings"]
+      ],
+      raw: true
+    });
+
+    const sellerRating = {
+      averageRating: parseFloat(ratingData[0]?.averageRating || 0).toFixed(1),
+      totalRatings: parseInt(ratingData[0]?.totalRatings || 0, 10)
+    };
+    item.dataValues.sellerRating = sellerRating;
+
+    // Get seller join date
+    if (item.seller) {
+      item.dataValues.sellerJoinDate = item.seller.createdAt;
+    }
+
+    // Get price history for this listing
+    const priceHistory = await PriceHistory.findAll({
+      where: { listingId: id },
+      order: [["createdAt", "DESC"]],
+      limit: 10
+    });
+    item.dataValues.priceHistory = priceHistory;
+
+    // Get related listings (same category, excluding current item)
+    const relatedListings = await Listing.findAll({
+      where: {
+        category: item.category,
+        listingId: { [Op.ne]: id },
+        status: "active"
+      },
+      limit: 4,
+      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: User,
+          as: "seller",
+          attributes: ["userId", "firstName", "lastName", "profilePicture"]
+        }
+      ]
+    });
+    item.dataValues.relatedListings = relatedListings;
+
+    // Check if item is in user's wishlist (if authenticated)
+    if (userId) {
+      const inWishlist = await Wishlist.findOne({
+        where: { userId, listingId: id }
+      });
+      item.dataValues.inWishlist = !!inWishlist;
+    } else {
+      item.dataValues.inWishlist = false;
     }
 
     return res.json({ success: true, listing: item });
@@ -421,6 +669,17 @@ async function createListing(req, res, next) {
       const result = await sequelize.transaction(async (t) => {
         const created = await Listing.create(payload, { transaction: t });
 
+        // Create initial price history entry
+        await PriceHistory.create(
+          {
+            listingId: created.listingId,
+            oldPrice: null,
+            newPrice: created.price,
+            changedBy: created.sellerId
+          },
+          { transaction: t }
+        );
+
         let sellerSub = null;
         if (subscriptionId) {
           // validate subscription exists (in-transaction)
@@ -478,11 +737,24 @@ async function createListing(req, res, next) {
 async function updateListing(req, res, next) {
   try {
     const { id } = req.params;
+    const userId = req.user && req.user.id;
+
     const item = await Listing.findByPk(id);
     if (!item)
       return res
         .status(404)
         .json({ success: false, message: "Listing not found" });
+
+    // Track price change
+    if (req.body.price && req.body.price !== item.price) {
+      await PriceHistory.create({
+        listingId: id,
+        oldPrice: item.price,
+        newPrice: req.body.price,
+        changedBy: userId
+      });
+    }
+
     await item.update(req.body);
     return res.json({ success: true, listing: item });
   } catch (err) {

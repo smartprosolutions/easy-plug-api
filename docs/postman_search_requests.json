@@ -1,0 +1,265 @@
+{
+  "name": "🔍 Search & Filters",
+  "description": "Comprehensive search with extensive filtering options",
+  "item": [
+    {
+      "name": "Basic Text Search",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?q=iPhone",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "q", "value": "iPhone", "description": "Search term" }
+          ]
+        },
+        "description": "Basic text search in title, description, and key features"
+      },
+      "response": []
+    },
+    {
+      "name": "Search by Category",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?category=electronics&sortBy=date_desc",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "category", "value": "electronics" },
+            { "key": "sortBy", "value": "date_desc" }
+          ]
+        },
+        "description": "Filter by category"
+      },
+      "response": []
+    },
+    {
+      "name": "Search with Price Range",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?q=laptop&minPrice=5000&maxPrice=20000&sortBy=price_asc",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "q", "value": "laptop" },
+            { "key": "minPrice", "value": "5000", "description": "Minimum price" },
+            { "key": "maxPrice", "value": "20000", "description": "Maximum price" },
+            { "key": "sortBy", "value": "price_asc" }
+          ]
+        },
+        "description": "Search with price range filter and sort by price"
+      },
+      "response": []
+    },
+    {
+      "name": "Search by Condition",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?condition=new&category=electronics",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "condition", "value": "new", "description": "new, used, or refurbished" },
+            { "key": "category", "value": "electronics" }
+          ]
+        },
+        "description": "Filter by condition (new, used, refurbished)"
+      },
+      "response": []
+    },
+    {
+      "name": "Location-Based Search (Nearby)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?latitude=-33.9249&longitude=18.4241&maxDistance=50&sortBy=distance",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "latitude", "value": "-33.9249", "description": "Your latitude" },
+            { "key": "longitude", "value": "18.4241", "description": "Your longitude" },
+            { "key": "maxDistance", "value": "50", "description": "Max distance in km" },
+            { "key": "sortBy", "value": "distance" }
+          ]
+        },
+        "description": "Find items within 50km and sort by distance"
+      },
+      "response": []
+    },
+    {
+      "name": "Search by Seller Rating",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?minRating=4.5&category=electronics",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "minRating", "value": "4.5", "description": "Minimum seller rating (1-5)" },
+            { "key": "category", "value": "electronics" }
+          ]
+        },
+        "description": "Filter by minimum seller rating (4.5 stars and above)"
+      },
+      "response": []
+    },
+    {
+      "name": "Recent Listings (Last 7 Days)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?postedSince=7&sortBy=date_desc",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "postedSince", "value": "7", "description": "Posted within last N days" },
+            { "key": "sortBy", "value": "date_desc" }
+          ]
+        },
+        "description": "Show listings posted in the last 7 days"
+      },
+      "response": []
+    },
+    {
+      "name": "Custom Date Range Search",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?dateFrom=2024-01-01&dateTo=2024-12-31",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "dateFrom", "value": "2024-01-01", "description": "Start date (YYYY-MM-DD)" },
+            { "key": "dateTo", "value": "2024-12-31", "description": "End date (YYYY-MM-DD)" }
+          ]
+        },
+        "description": "Search within a specific date range"
+      },
+      "response": []
+    },
+    {
+      "name": "Most Viewed Items",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?sortBy=views&limit=50",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "sortBy", "value": "views", "description": "Sort by most viewed" },
+            { "key": "limit", "value": "50" }
+          ]
+        },
+        "description": "Get most viewed listings"
+      },
+      "response": []
+    },
+    {
+      "name": "Advanced Combined Search",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?q=Samsung Galaxy&category=electronics&minPrice=10000&maxPrice=20000&condition=new&minRating=4.0&postedSince=30&sortBy=price_asc&page=1&limit=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "q", "value": "Samsung Galaxy" },
+            { "key": "category", "value": "electronics" },
+            { "key": "minPrice", "value": "10000" },
+            { "key": "maxPrice", "value": "20000" },
+            { "key": "condition", "value": "new" },
+            { "key": "minRating", "value": "4.0" },
+            { "key": "postedSince", "value": "30" },
+            { "key": "sortBy", "value": "price_asc" },
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "20" }
+          ]
+        },
+        "description": "Advanced search with multiple filters combined"
+      },
+      "response": []
+    },
+    {
+      "name": "Search Ads Only",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/search?isAdvertisement=true",
+          "host": ["{{baseUrl}}"],
+          "path": ["search"],
+          "query": [
+            { "key": "isAdvertisement", "value": "true", "description": "true or false" }
+          ]
+        },
+        "description": "Show only promoted/advertisement listings"
+      },
+      "response": []
+    },
+    {
+      "name": "Get Available Filters",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/search/filters",
+          "host": ["{{baseUrl}}"],
+          "path": ["search", "filters"]
+        },
+        "description": "Get all available filter options with counts (categories, conditions, price range, etc.)"
+      },
+      "response": []
+    },
+    {
+      "name": "Get Search Suggestions (Autocomplete)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/search/suggestions?q=iph",
+          "host": ["{{baseUrl}}"],
+          "path": ["search", "suggestions"],
+          "query": [
+            { "key": "q", "value": "iph", "description": "Search query (min 2 characters)" }
+          ]
+        },
+        "description": "Get search suggestions for autocomplete (requires min 2 characters)"
+      },
+      "response": []
+    }
+  ]
+}
