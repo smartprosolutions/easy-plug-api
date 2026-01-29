@@ -1,5 +1,6 @@
-const { chatMessages: ChatMessage, chats: Chat } = require('../models');
+const { chatMessages: ChatMessage, chats: Chat, listings: Listing, users: User } = require('../models');
 const { success, fail } = require('../utils/response');
+const { createNotification } = require('./notificationsController');
 
 // send a message in a chat (chat should exist or be created by caller)
 async function sendMessage(req, res, next) {
@@ -13,6 +14,34 @@ async function sendMessage(req, res, next) {
 		if (!chat) return fail(res, 'Chat not found', 404);
 
 		const created = await ChatMessage.create({ chatId, senderId, receiverId, message, isRead: false, createdAt: new Date() });
+
+		// Get sender and listing info for notification
+		const sender = await User.findByPk(senderId, {
+			attributes: ['userId', 'firstName', 'lastName']
+		});
+		const listing = await Listing.findByPk(chat.listingId, {
+			attributes: ['listingId', 'title']
+		});
+
+		// Create notification for receiver
+		if (receiverId && sender && listing) {
+			await createNotification(
+				receiverId,
+				'message',
+				'New Message',
+				`${sender.firstName} ${sender.lastName} sent you a message about "${listing.title}"`,
+				`/chats/${chatId}`,
+				{
+					chatId,
+					senderId,
+					senderName: `${sender.firstName} ${sender.lastName}`,
+					listingId: listing.listingId,
+					listingTitle: listing.title,
+					messagePreview: message.substring(0, 100)
+				}
+			);
+		}
+
 		return success(res, { message: created }, 201);
 	} catch (err) {
 		next(err);

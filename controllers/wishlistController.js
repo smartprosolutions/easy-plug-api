@@ -1,5 +1,6 @@
 const { wishlist: Wishlist, listings: Listing, users: User } = require("../models");
 const { success, fail } = require("../utils/response");
+const { createNotification } = require("./notificationsController");
 
 // Add item to wishlist
 async function addToWishlist(req, res, next) {
@@ -28,6 +29,29 @@ async function addToWishlist(req, res, next) {
 
     // Add to wishlist
     const wishlistItem = await Wishlist.create({ userId, listingId });
+
+    // Get user info for notification
+    const user = await User.findByPk(userId, {
+      attributes: ['userId', 'firstName', 'lastName']
+    });
+
+    // Notify seller that someone wishlisted their item
+    if (listing.sellerId && user) {
+      await createNotification(
+        listing.sellerId,
+        'listing',
+        'Item Added to Wishlist! ❤️',
+        `${user.firstName} ${user.lastName} added "${listing.title}" to their wishlist`,
+        `/listings/${listingId}`,
+        {
+          listingId,
+          listingTitle: listing.title,
+          userId,
+          userName: `${user.firstName} ${user.lastName}`
+        }
+      );
+    }
+
     return res.status(201).json({
       success: true,
       message: "Added to wishlist",

@@ -12,6 +12,7 @@ const {
 const { Op } = require("sequelize");
 const { fail } = require("../utils/response");
 const { logActivity } = require("../middleware/activityLogger");
+const { createNotification } = require("./notificationsController");
 const path = require("path");
 const fs = require("fs");
 
@@ -503,8 +504,31 @@ async function getListing(req, res, next) {
 
     // Increment view count (don't count seller's own views)
     if (!userId || userId !== item.sellerId) {
-      item.views = (item.views || 0) + 1;
+      const previousViews = item.views || 0;
+      item.views = previousViews + 1;
       await item.save();
+
+      // Notify seller on view milestones (100, 500, 1000, 5000, 10000)
+      const milestones = [100, 500, 1000, 5000, 10000];
+      const newViews = item.views;
+      for (const milestone of milestones) {
+        if (previousViews < milestone && newViews >= milestone) {
+          await createNotification(
+            item.sellerId,
+            'listing',
+            'View Milestone Reached! 🎉',
+            `Your listing "${item.title}" has reached ${milestone} views!`,
+            `/listings/${item.listingId}`,
+            {
+              listingId: item.listingId,
+              listingTitle: item.title,
+              views: newViews,
+              milestone
+            }
+          );
+          break; // Only notify for one milestone at a time
+        }
+      }
 
       // Log view activity if user is authenticated
       if (userId && req) {
@@ -745,14 +769,49 @@ async function updateListing(req, res, next) {
         .status(404)
         .json({ success: false, message: "Listing not found" });
 
-    // Track price change
-    if (req.body.price && req.body.price !== item.price) {
+    // Track price change and notify wishlisters
+    if (req.body.price && parseFloat(req.body.price) !== parseFloat(item.price)) {
+      const oldPrice = parseFloat(item.price);
+      const newPrice = parseFloat(req.body.price);
+
+      // Record price history
       await PriceHistory.create({
         listingId: id,
         oldPrice: item.price,
         newPrice: req.body.price,
         changedBy: userId
       });
+
+      // Notify wishlisters if price dropped
+      if (newPrice < oldPrice) {
+        const priceDrop = oldPrice - newPrice;
+        const percentageDrop = ((priceDrop / oldPrice) * 100).toFixed(0);
+
+        // Get all users who wishlisted this item
+        const wishlisters = await Wishlist.findAll({
+          where: { listingId: id },
+          attributes: ['userId']
+        });
+
+        // Notify each wishlister about the price drop
+        for (const w of wishlisters) {
+          await createNotification(
+            w.userId,
+            'listing',
+            'Price Drop Alert! 💰',
+            `"${item.title}" price dropped from R${oldPrice.toFixed(2)} to R${newPrice.toFixed(2)} (-${percentageDrop}%)`,
+            `/listings/${id}`,
+            {
+              listingId: id,
+              listingTitle: item.title,
+              oldPrice,
+              newPrice,
+              priceDrop,
+              percentageDrop
+            }
+          );
+        }
+      }
     }
 
     await item.update(req.body);
