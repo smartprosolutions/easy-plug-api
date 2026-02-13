@@ -40,6 +40,12 @@ module.exports = (sequelize, DataTypes) => {
       description: {
         type: DataTypes.TEXT
       },
+      pricingTiers: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        defaultValue: [],
+        comment: "Array of {usersPerHour, price} objects"
+      },
       status: {
         type: DataTypes.STRING
       },

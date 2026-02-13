@@ -7,7 +7,7 @@ const {
   address: Address,
   ratings: Rating,
   wishlist: Wishlist,
-  priceHistory: PriceHistory
+  priceHistory: PriceHistory,
 } = db;
 const { Op } = require("sequelize");
 const { fail } = require("../utils/response");
@@ -65,13 +65,13 @@ async function listListings(req, res, next) {
                 "province",
                 "country",
                 "postalCode",
-                "createdAt"
+                "createdAt",
               ],
               separate: true,
               limit: 1,
-              order: [["createdAt", "DESC"]]
-            }
-          ]
+              order: [["createdAt", "DESC"]],
+            },
+          ],
         },
         {
           model: SellerSubscription,
@@ -84,27 +84,31 @@ async function listListings(req, res, next) {
                 "name",
                 "durationInHours",
                 "price",
-                "status"
-              ]
-            }
-          ]
-        }
-      ]
+                "status",
+              ],
+            },
+          ],
+        },
+      ],
     });
 
     let filtered = candidates;
 
     // Calculate distances and filter by maxDistance if location provided
     if (userLat !== null && userLon !== null) {
-      filtered = filtered.map(listing => {
-        if (listing.seller && listing.seller.addresses && listing.seller.addresses.length > 0) {
+      filtered = filtered.map((listing) => {
+        if (
+          listing.seller &&
+          listing.seller.addresses &&
+          listing.seller.addresses.length > 0
+        ) {
           const sellerAddr = listing.seller.addresses[0];
           if (sellerAddr.latitude && sellerAddr.longitude) {
             const distance = haversineDistanceKm(
               userLat,
               userLon,
               parseFloat(sellerAddr.latitude),
-              parseFloat(sellerAddr.longitude)
+              parseFloat(sellerAddr.longitude),
             );
             listing.dataValues.distance = Math.round(distance * 10) / 10;
             return listing;
@@ -116,7 +120,10 @@ async function listListings(req, res, next) {
 
       // Filter by maxDistance if specified
       if (maxDist !== null) {
-        filtered = filtered.filter(l => l.dataValues.distance !== null && l.dataValues.distance <= maxDist);
+        filtered = filtered.filter(
+          (l) =>
+            l.dataValues.distance !== null && l.dataValues.distance <= maxDist,
+        );
       }
     }
 
@@ -127,19 +134,25 @@ async function listListings(req, res, next) {
     // Sort by distance if location provided, otherwise by date
     if (userLat !== null && userLon !== null) {
       ads = ads.sort((a, b) => {
-        const distA = a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
-        const distB = b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+        const distA =
+          a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+        const distB =
+          b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
         return distA - distB;
       });
       standard = standard.sort((a, b) => {
-        const distA = a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
-        const distB = b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+        const distA =
+          a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+        const distB =
+          b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
         return distA - distB;
       });
     } else {
       // Default sort by newest first
       ads = ads.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      standard = standard.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      standard = standard.sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+      );
     }
 
     // pagination pattern per page: 8 ads, 24 standard, 8 ads
@@ -159,14 +172,17 @@ async function listListings(req, res, next) {
       page,
       counts: {
         adsTotal: ads.length,
-        standardTotal: standard.length
+        standardTotal: standard.length,
       },
-      location: userLat && userLon ? {
-        latitude: userLat,
-        longitude: userLon,
-        maxDistance: maxDist,
-        sortedByDistance: true
-      } : null
+      location:
+        userLat && userLon
+          ? {
+              latitude: userLat,
+              longitude: userLon,
+              maxDistance: maxDist,
+              sortedByDistance: true,
+            }
+          : null,
     });
   } catch (err) {
     next(err);
@@ -196,7 +212,7 @@ async function listAdListings(req, res, next) {
     const { rows, count } = await Listing.findAndCountAll({
       where: {
         isAdvertisement: true,
-        [Op.or]: [{ isSeen: false }, { isSeen: null }]
+        [Op.or]: [{ isSeen: false }, { isSeen: null }],
       },
       include: [
         {
@@ -217,13 +233,13 @@ async function listAdListings(req, res, next) {
                 "province",
                 "country",
                 "postalCode",
-                "createdAt"
+                "createdAt",
               ],
               separate: true,
               limit: 1,
-              order: [["createdAt", "DESC"]]
-            }
-          ]
+              order: [["createdAt", "DESC"]],
+            },
+          ],
         },
         {
           model: SellerSubscription,
@@ -236,16 +252,17 @@ async function listAdListings(req, res, next) {
                 "name",
                 "durationInHours",
                 "price",
-                "status"
-              ]
-            }
-          ]
-        }
+                "pricingTiers",
+                "status",
+              ],
+            },
+          ],
+        },
       ],
       order: userLat === null ? [["createdAt", "DESC"]] : [],
       limit,
       offset,
-      distinct: true
+      distinct: true,
     });
 
     let listings = rows;
@@ -253,15 +270,19 @@ async function listAdListings(req, res, next) {
 
     // Calculate distances and sort by proximity if location provided
     if (userLat !== null && userLon !== null) {
-      listings = listings.map(listing => {
-        if (listing.seller && listing.seller.addresses && listing.seller.addresses.length > 0) {
+      listings = listings.map((listing) => {
+        if (
+          listing.seller &&
+          listing.seller.addresses &&
+          listing.seller.addresses.length > 0
+        ) {
           const sellerAddr = listing.seller.addresses[0];
           if (sellerAddr.latitude && sellerAddr.longitude) {
             const distance = haversineDistanceKm(
               userLat,
               userLon,
               parseFloat(sellerAddr.latitude),
-              parseFloat(sellerAddr.longitude)
+              parseFloat(sellerAddr.longitude),
             );
             listing.dataValues.distance = Math.round(distance * 10) / 10;
             return listing;
@@ -273,14 +294,19 @@ async function listAdListings(req, res, next) {
 
       // Filter by maxDistance if specified
       if (maxDist !== null) {
-        listings = listings.filter(l => l.dataValues.distance !== null && l.dataValues.distance <= maxDist);
+        listings = listings.filter(
+          (l) =>
+            l.dataValues.distance !== null && l.dataValues.distance <= maxDist,
+        );
         totalCount = listings.length;
       }
 
       // Sort by distance (nearest first)
       listings.sort((a, b) => {
-        const distA = a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
-        const distB = b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+        const distA =
+          a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+        const distB =
+          b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
         return distA - distB;
       });
 
@@ -297,12 +323,15 @@ async function listAdListings(req, res, next) {
       pageSize,
       total: totalCount,
       totalPages: Math.ceil(totalCount / pageSize),
-      location: userLat && userLon ? {
-        latitude: userLat,
-        longitude: userLon,
-        maxDistance: maxDist,
-        sortedByDistance: true
-      } : null
+      location:
+        userLat && userLon
+          ? {
+              latitude: userLat,
+              longitude: userLon,
+              maxDistance: maxDist,
+              sortedByDistance: true,
+            }
+          : null,
     });
   } catch (err) {
     next(err);
@@ -332,7 +361,7 @@ async function listStandardListings(req, res, next) {
     const { rows, count } = await Listing.findAndCountAll({
       where: {
         isAdvertisement: { [Op.or]: [false, null] },
-        [Op.or]: [{ isSeen: false }, { isSeen: null }]
+        [Op.or]: [{ isSeen: false }, { isSeen: null }],
       },
       include: [
         {
@@ -353,13 +382,13 @@ async function listStandardListings(req, res, next) {
                 "province",
                 "country",
                 "postalCode",
-                "createdAt"
+                "createdAt",
               ],
               separate: true,
               limit: 1,
-              order: [["createdAt", "DESC"]]
-            }
-          ]
+              order: [["createdAt", "DESC"]],
+            },
+          ],
         },
         {
           model: SellerSubscription,
@@ -372,16 +401,16 @@ async function listStandardListings(req, res, next) {
                 "name",
                 "durationInHours",
                 "price",
-                "status"
-              ]
-            }
-          ]
-        }
+                "status",
+              ],
+            },
+          ],
+        },
       ],
       order: userLat === null ? [["createdAt", "DESC"]] : [],
       limit,
       offset,
-      distinct: true
+      distinct: true,
     });
 
     let listings = rows;
@@ -389,15 +418,19 @@ async function listStandardListings(req, res, next) {
 
     // Calculate distances and sort by proximity if location provided
     if (userLat !== null && userLon !== null) {
-      listings = listings.map(listing => {
-        if (listing.seller && listing.seller.addresses && listing.seller.addresses.length > 0) {
+      listings = listings.map((listing) => {
+        if (
+          listing.seller &&
+          listing.seller.addresses &&
+          listing.seller.addresses.length > 0
+        ) {
           const sellerAddr = listing.seller.addresses[0];
           if (sellerAddr.latitude && sellerAddr.longitude) {
             const distance = haversineDistanceKm(
               userLat,
               userLon,
               parseFloat(sellerAddr.latitude),
-              parseFloat(sellerAddr.longitude)
+              parseFloat(sellerAddr.longitude),
             );
             listing.dataValues.distance = Math.round(distance * 10) / 10;
             return listing;
@@ -409,14 +442,19 @@ async function listStandardListings(req, res, next) {
 
       // Filter by maxDistance if specified
       if (maxDist !== null) {
-        listings = listings.filter(l => l.dataValues.distance !== null && l.dataValues.distance <= maxDist);
+        listings = listings.filter(
+          (l) =>
+            l.dataValues.distance !== null && l.dataValues.distance <= maxDist,
+        );
         totalCount = listings.length;
       }
 
       // Sort by distance (nearest first)
       listings.sort((a, b) => {
-        const distA = a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
-        const distB = b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+        const distA =
+          a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+        const distB =
+          b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
         return distA - distB;
       });
 
@@ -433,12 +471,15 @@ async function listStandardListings(req, res, next) {
       pageSize,
       total: totalCount,
       totalPages: Math.ceil(totalCount / pageSize),
-      location: userLat && userLon ? {
-        latitude: userLat,
-        longitude: userLon,
-        maxDistance: maxDist,
-        sortedByDistance: true
-      } : null
+      location:
+        userLat && userLon
+          ? {
+              latitude: userLat,
+              longitude: userLon,
+              maxDistance: maxDist,
+              sortedByDistance: true,
+            }
+          : null,
     });
   } catch (err) {
     next(err);
@@ -477,7 +518,7 @@ async function getListing(req, res, next) {
         {
           model: User,
           as: "seller",
-          attributes: { exclude: ["passwordHash"] }
+          attributes: { exclude: ["passwordHash"] },
         },
         {
           model: SellerSubscription,
@@ -490,12 +531,12 @@ async function getListing(req, res, next) {
                 "name",
                 "durationInHours",
                 "price",
-                "status"
-              ]
-            }
-          ]
-        }
-      ]
+                "status",
+              ],
+            },
+          ],
+        },
+      ],
     });
     if (!item)
       return res
@@ -515,16 +556,16 @@ async function getListing(req, res, next) {
         if (previousViews < milestone && newViews >= milestone) {
           await createNotification(
             item.sellerId,
-            'listing',
-            'View Milestone Reached! 🎉',
+            "listing",
+            "View Milestone Reached! 🎉",
             `Your listing "${item.title}" has reached ${milestone} views!`,
             `/listings/${item.listingId}`,
             {
               listingId: item.listingId,
               listingTitle: item.title,
               views: newViews,
-              milestone
-            }
+              milestone,
+            },
           );
           break; // Only notify for one milestone at a time
         }
@@ -534,7 +575,7 @@ async function getListing(req, res, next) {
       if (userId && req) {
         logActivity(userId, "view_listing", "listing", id, req, {
           listingTitle: item.title,
-          listingPrice: item.price
+          listingPrice: item.price,
         });
       }
     }
@@ -543,7 +584,7 @@ async function getListing(req, res, next) {
     if (item.sellerId) {
       const latestAddress = await Address.findOne({
         where: { userId: item.sellerId },
-        order: [["createdAt", "DESC"]]
+        order: [["createdAt", "DESC"]],
       });
       if (latestAddress) {
         item.dataValues.address = latestAddress;
@@ -555,14 +596,17 @@ async function getListing(req, res, next) {
       where: { sellerId: item.sellerId },
       attributes: [
         [db.sequelize.fn("AVG", db.sequelize.col("rating")), "averageRating"],
-        [db.sequelize.fn("COUNT", db.sequelize.col("ratingId")), "totalRatings"]
+        [
+          db.sequelize.fn("COUNT", db.sequelize.col("ratingId")),
+          "totalRatings",
+        ],
       ],
-      raw: true
+      raw: true,
     });
 
     const sellerRating = {
       averageRating: parseFloat(ratingData[0]?.averageRating || 0).toFixed(1),
-      totalRatings: parseInt(ratingData[0]?.totalRatings || 0, 10)
+      totalRatings: parseInt(ratingData[0]?.totalRatings || 0, 10),
     };
     item.dataValues.sellerRating = sellerRating;
 
@@ -575,7 +619,7 @@ async function getListing(req, res, next) {
     const priceHistory = await PriceHistory.findAll({
       where: { listingId: id },
       order: [["createdAt", "DESC"]],
-      limit: 10
+      limit: 10,
     });
     item.dataValues.priceHistory = priceHistory;
 
@@ -584,7 +628,7 @@ async function getListing(req, res, next) {
       where: {
         category: item.category,
         listingId: { [Op.ne]: id },
-        status: "active"
+        status: "active",
       },
       limit: 4,
       order: [["createdAt", "DESC"]],
@@ -592,16 +636,16 @@ async function getListing(req, res, next) {
         {
           model: User,
           as: "seller",
-          attributes: ["userId", "firstName", "lastName", "profilePicture"]
-        }
-      ]
+          attributes: ["userId", "firstName", "lastName", "profilePicture"],
+        },
+      ],
     });
     item.dataValues.relatedListings = relatedListings;
 
     // Check if item is in user's wishlist (if authenticated)
     if (userId) {
       const inWishlist = await Wishlist.findOne({
-        where: { userId, listingId: id }
+        where: { userId, listingId: id },
       });
       item.dataValues.inWishlist = !!inWishlist;
     } else {
@@ -614,81 +658,102 @@ async function getListing(req, res, next) {
   }
 }
 
+// Helper to parse JSON arrays that may come as strings
+function parseArrayField(field) {
+  if (!field) return [];
+  if (Array.isArray(field)) return field;
+  if (typeof field === "string") {
+    try {
+      const parsed = JSON.parse(field);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+}
+
+// Helper to handle file uploads for listings
+async function handleListingFileUploads(req, sellerEmail, folderName) {
+  const uploadedFiles = [];
+  if (!req.files) return uploadedFiles;
+
+  const allFiles = [];
+  if (req.files.images) {
+    if (Array.isArray(req.files.images)) allFiles.push(...req.files.images);
+    else allFiles.push(req.files.images);
+  }
+  if (req.files.file) allFiles.push(req.files.file);
+
+  if (allFiles.length > 0) {
+    const destDir = path.join(
+      process.cwd(),
+      "uploads",
+      "listings",
+      sellerEmail,
+      folderName,
+    );
+    fs.mkdirSync(destDir, { recursive: true });
+
+    for (const f of allFiles) {
+      const safeName = `${Date.now()}-${f.name.replace(/[^a-z0-9.\-_]/gi, "_")}`;
+      const destPath = path.join(destDir, safeName);
+      await new Promise((resolve, reject) => {
+        f.mv(destPath, (err) => (err ? reject(err) : resolve()));
+      });
+      uploadedFiles.push(safeName);
+    }
+  }
+  return uploadedFiles;
+}
+
+// Create a standard listing (isAdvertisement = false)
 async function createListing(req, res, next) {
   try {
-    console.log("Request body:", req.body); // Debugging line
-    console.log("Request files:", req.files); // Debugging line
     const sequelize = db.sequelize;
-    const { subscriptionId } = req.body || {};
-    const payload = { ...req.body };
-    // ensure sellerId is present (from body or auth)
-    if (!payload.sellerId && req.user && req.user.id)
-      payload.sellerId = req.user.id;
-
-    // prepare file storage and seller/subscription info
-    const uploadedFiles = [];
-
-    // resolve seller email for folder naming (use authenticated user's email if available)
     const sellerEmail = req.user && req.user.email;
+    const sellerId = req.user && req.user.id;
 
-    // resolve subscription name and set isAdvertisement flag
-    let subscriptionName = "none";
-    let foundSubscription = null;
-    if (subscriptionId) {
-      foundSubscription = await db.subscriptions.findByPk(subscriptionId);
-      if (!foundSubscription) {
-        const err = new Error("Subscription not found");
-        err.status = 400;
-        throw err;
-      }
-      subscriptionName = (
-        foundSubscription.name || `sub-${subscriptionId}`
-      ).replace(/[^a-z0-9-_]/gi, "_");
-
-      // if subscription is Standard => not an advertisement, otherwise advertisement
-      const subName = (foundSubscription.name || "").toLowerCase();
-      if (subName === "standard") payload.isAdvertisement = false;
-      else payload.isAdvertisement = true;
+    if (!sellerId) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Not authenticated" });
     }
 
-    // handle uploaded files (express-fileupload)
-    if (req.files) {
-      const allFiles = [];
-      if (req.files.images) {
-        if (Array.isArray(req.files.images)) allFiles.push(...req.files.images);
-        else allFiles.push(req.files.images);
-      }
-      if (req.files.file) allFiles.push(req.files.file);
+    const {
+      title,
+      description,
+      keyFeatures,
+      price,
+      category,
+      type,
+      status,
+      expiresAt,
+      condition,
+    } = req.body;
 
-      if (allFiles.length > 0) {
-        const destDir = path.join(
-          process.cwd(),
-          "uploads",
-          "listings",
-          sellerEmail,
-          subscriptionName
-        );
-        fs.mkdirSync(destDir, { recursive: true });
+    // Handle file uploads
+    const uploadedFiles = await handleListingFileUploads(
+      req,
+      sellerEmail,
+      "standard",
+    );
 
-        for (const f of allFiles) {
-          const safeName = `${Date.now()}-${f.name.replace(
-            /[^a-z0-9.\-_]/gi,
-            "_"
-          )}`;
-          const destPath = path.join(destDir, safeName);
-          await new Promise((resolve, reject) => {
-            f.mv(destPath, (err) => (err ? reject(err) : resolve()));
-          });
-          // only store the filename in the DB; files are saved on disk under
-          // uploads/listings/<sellerEmail>/<subscriptionName>/<safeName>
-          uploadedFiles.push(safeName);
-        }
+    const payload = {
+      sellerId,
+      title,
+      description,
+      keyFeatures: parseArrayField(keyFeatures),
+      price,
+      category,
+      type,
+      status: status || "active",
+      condition: condition || "new",
+      isAdvertisement: false,
+      expiresAt: expiresAt || null,
+      images: uploadedFiles.length > 0 ? uploadedFiles : null,
+    };
 
-        if (uploadedFiles.length > 0) payload.images = uploadedFiles;
-      }
-    }
-
-    // run a transaction so listing creation and sellerSubscription creation are atomic
     try {
       const result = await sequelize.transaction(async (t) => {
         const created = await Listing.create(payload, { transaction: t });
@@ -699,35 +764,144 @@ async function createListing(req, res, next) {
             listingId: created.listingId,
             oldPrice: null,
             newPrice: created.price,
-            changedBy: created.sellerId
+            changedBy: created.sellerId,
           },
-          { transaction: t }
+          { transaction: t },
         );
 
-        let sellerSub = null;
-        if (subscriptionId) {
-          // validate subscription exists (in-transaction)
-          const subscription = await db.subscriptions.findByPk(subscriptionId, {
-            transaction: t
-          });
-          if (!subscription) {
-            const err = new Error("Subscription not found");
-            err.status = 400;
-            throw err;
-          }
+        return { listing: created };
+      });
 
-          // create sellerSubscription linking this listing
-          sellerSub = await db.sellerSubscription.create(
-            {
-              sellerId: created.sellerId,
-              listingId: created.listingId,
-              subscriptionId: subscription.subscriptionId || subscriptionId
-            },
-            { transaction: t }
+      return res.status(201).json({ success: true, ...result });
+    } catch (err) {
+      // cleanup uploaded files on failure
+      try {
+        for (const fileName of uploadedFiles) {
+          const p = path.join(
+            process.cwd(),
+            "uploads",
+            "listings",
+            sellerEmail,
+            "standard",
+            fileName,
           );
+          if (fs.existsSync(p)) fs.unlinkSync(p);
         }
+      } catch (cleanupErr) {
+        console.error(
+          "Error cleaning uploaded files after transaction failure:",
+          cleanupErr,
+        );
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+}
 
-        return { listing: created, sellerSubscription: sellerSub };
+// Create an advertisement/catalogue (isAdvertisement = true) - container for listings
+async function createAdvertListing(req, res, next) {
+  try {
+    const sequelize = db.sequelize;
+    const sellerEmail = req.user && req.user.email;
+    const sellerId = req.user && req.user.id;
+
+    if (!sellerId) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Not authenticated" });
+    }
+
+    const {
+      title,
+      description,
+      category,
+      type,
+      status,
+      expiresAt,
+      expires_at,
+      subscriptionId,
+      subscriptionTierUsersPerHour,
+      pricingTier,
+    } = req.body;
+
+    // Handle expires_at (underscore) or expiresAt (camelCase)
+    const expiration = expiresAt || expires_at || null;
+
+    // Parse pricingTier if it comes as a string
+    let parsedPricingTier = pricingTier;
+    if (typeof pricingTier === "string") {
+      try {
+        parsedPricingTier = JSON.parse(pricingTier);
+      } catch (e) {
+        parsedPricingTier = null;
+      }
+    }
+
+    if (!subscriptionId) {
+      return res.status(400).json({
+        success: false,
+        message: "subscriptionId is required for advertisements",
+      });
+    }
+
+    // Validate subscription exists
+    const foundSubscription = await db.subscriptions.findByPk(subscriptionId);
+    if (!foundSubscription) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Subscription not found" });
+    }
+
+    const subscriptionName = (
+      foundSubscription.name || `sub-${subscriptionId}`
+    ).replace(/[^a-z0-9-_]/gi, "_");
+
+    // Handle file uploads (catalogue cover images)
+    const uploadedFiles = await handleListingFileUploads(
+      req,
+      sellerEmail,
+      subscriptionName,
+    );
+
+    // Advert/catalogue - price from pricingTier or 0, condition n/a, it's a container
+    const advertPrice =
+      parsedPricingTier && parsedPricingTier.price
+        ? parsedPricingTier.price
+        : 0;
+
+    const payload = {
+      sellerId,
+      title: title || category || "Advertisement",
+      description: description || "",
+      keyFeatures: [],
+      price: advertPrice,
+      category: category || "CATALOGUE",
+      type: type || "CATALOGUE",
+      status: status || "active",
+      condition: "n/a",
+      isAdvertisement: true,
+      expiresAt: expiration,
+      parentAdvertId: null,
+      images: uploadedFiles.length > 0 ? uploadedFiles : null,
+    };
+
+    try {
+      const result = await sequelize.transaction(async (t) => {
+        const created = await Listing.create(payload, { transaction: t });
+
+        // Create sellerSubscription linking this advert
+        const sellerSub = await db.sellerSubscription.create(
+          {
+            sellerId: created.sellerId,
+            listingId: created.listingId,
+            subscriptionId: foundSubscription.subscriptionId || subscriptionId,
+          },
+          { transaction: t },
+        );
+
+        return { advert: created, sellerSubscription: sellerSub };
       });
 
       return res.status(201).json({ success: true, ...result });
@@ -741,18 +915,203 @@ async function createListing(req, res, next) {
             "listings",
             sellerEmail,
             subscriptionName,
-            fileName
+            fileName,
           );
           if (fs.existsSync(p)) fs.unlinkSync(p);
         }
       } catch (cleanupErr) {
         console.error(
           "Error cleaning uploaded files after transaction failure:",
-          cleanupErr
+          cleanupErr,
         );
       }
       throw err;
     }
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Add a listing to an existing advert/catalogue
+async function addListingToAdvert(req, res, next) {
+  try {
+    const sequelize = db.sequelize;
+    const sellerEmail = req.user && req.user.email;
+    const sellerId = req.user && req.user.id;
+    const { advertId } = req.params;
+
+    if (!sellerId) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Not authenticated" });
+    }
+
+    // Validate the advert exists and belongs to seller
+    const advert = await Listing.findOne({
+      where: { listingId: advertId, sellerId, isAdvertisement: true },
+    });
+    if (!advert) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Advert/catalogue not found" });
+    }
+
+    const {
+      title,
+      description,
+      keyFeatures,
+      price,
+      category,
+      type,
+      status,
+      condition,
+    } = req.body;
+
+    // Handle file uploads
+    const uploadedFiles = await handleListingFileUploads(
+      req,
+      sellerEmail,
+      "catalogue-items",
+    );
+
+    const payload = {
+      sellerId,
+      title,
+      description,
+      keyFeatures: parseArrayField(keyFeatures),
+      price,
+      category: category || advert.category,
+      type: type || advert.type,
+      status: status || "active",
+      condition: condition || "new",
+      isAdvertisement: false,
+      expiresAt: advert.expiresAt,
+      parentAdvertId: advertId,
+      images: uploadedFiles.length > 0 ? uploadedFiles : null,
+    };
+
+    try {
+      const result = await sequelize.transaction(async (t) => {
+        const created = await Listing.create(payload, { transaction: t });
+
+        // Create initial price history entry
+        await PriceHistory.create(
+          {
+            listingId: created.listingId,
+            oldPrice: null,
+            newPrice: created.price,
+            changedBy: created.sellerId,
+          },
+          { transaction: t },
+        );
+
+        return { listing: created };
+      });
+
+      return res.status(201).json({ success: true, ...result });
+    } catch (err) {
+      // cleanup uploaded files on failure
+      try {
+        for (const fileName of uploadedFiles) {
+          const p = path.join(
+            process.cwd(),
+            "uploads",
+            "listings",
+            sellerEmail,
+            "catalogue-items",
+            fileName,
+          );
+          if (fs.existsSync(p)) fs.unlinkSync(p);
+        }
+      } catch (cleanupErr) {
+        console.error(
+          "Error cleaning uploaded files after transaction failure:",
+          cleanupErr,
+        );
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Get an advert with all its catalogue items
+async function getAdvertWithItems(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const advert = await Listing.findOne({
+      where: { listingId: id, isAdvertisement: true },
+      include: [
+        {
+          model: Listing,
+          as: "catalogueItems",
+          where: { isAdvertisement: false },
+          required: false,
+        },
+        {
+          model: User,
+          as: "seller",
+          attributes: { exclude: ["passwordHash"] },
+        },
+        {
+          model: SellerSubscription,
+          attributes: ["sellerSubscriptionId", "subscriptionId", "createdAt"],
+          include: [
+            {
+              model: Subscription,
+              attributes: [
+                "subscriptionId",
+                "name",
+                "durationInHours",
+                "price",
+                "pricingTiers",
+                "status",
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!advert) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Advert not found" });
+    }
+
+    return res.json({ success: true, advert });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Get seller's adverts/catalogues with their items
+async function getSellerCatalogue(req, res, next) {
+  try {
+    const sellerId = req.user && req.user.id;
+    if (!sellerId) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Not authenticated" });
+    }
+
+    // Get all adverts (catalogues) belonging to this seller
+    const adverts = await Listing.findAll({
+      where: { sellerId, isAdvertisement: true },
+      include: [
+        {
+          model: Listing,
+          as: "catalogueItems",
+          where: { isAdvertisement: false },
+          required: false,
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.json({ success: true, catalogues: adverts });
   } catch (err) {
     next(err);
   }
@@ -770,7 +1129,10 @@ async function updateListing(req, res, next) {
         .json({ success: false, message: "Listing not found" });
 
     // Track price change and notify wishlisters
-    if (req.body.price && parseFloat(req.body.price) !== parseFloat(item.price)) {
+    if (
+      req.body.price &&
+      parseFloat(req.body.price) !== parseFloat(item.price)
+    ) {
       const oldPrice = parseFloat(item.price);
       const newPrice = parseFloat(req.body.price);
 
@@ -779,7 +1141,7 @@ async function updateListing(req, res, next) {
         listingId: id,
         oldPrice: item.price,
         newPrice: req.body.price,
-        changedBy: userId
+        changedBy: userId,
       });
 
       // Notify wishlisters if price dropped
@@ -790,15 +1152,15 @@ async function updateListing(req, res, next) {
         // Get all users who wishlisted this item
         const wishlisters = await Wishlist.findAll({
           where: { listingId: id },
-          attributes: ['userId']
+          attributes: ["userId"],
         });
 
         // Notify each wishlister about the price drop
         for (const w of wishlisters) {
           await createNotification(
             w.userId,
-            'listing',
-            'Price Drop Alert! 💰',
+            "listing",
+            "Price Drop Alert! 💰",
             `"${item.title}" price dropped from R${oldPrice.toFixed(2)} to R${newPrice.toFixed(2)} (-${percentageDrop}%)`,
             `/listings/${id}`,
             {
@@ -807,8 +1169,8 @@ async function updateListing(req, res, next) {
               oldPrice,
               newPrice,
               priceDrop,
-              percentageDrop
-            }
+              percentageDrop,
+            },
           );
         }
       }
@@ -844,6 +1206,10 @@ module.exports = {
   sellerListListings,
   getListing,
   createListing,
+  createAdvertListing,
+  addListingToAdvert,
+  getAdvertWithItems,
+  getSellerCatalogue,
   updateListing,
-  deleteListing
+  deleteListing,
 };

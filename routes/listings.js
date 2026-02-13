@@ -8,6 +8,10 @@ const {
   sellerListListings,
   getListing,
   createListing,
+  createAdvertListing,
+  addListingToAdvert,
+  getAdvertWithItems,
+  getSellerCatalogue,
   updateListing,
   deleteListing
 } = require("../controllers/listingsController");
@@ -24,10 +28,18 @@ router.get("/standard", auth, listStandardListings);
 router.get("/admin/all", auth, protect(["admin"]), adminListListings);
 // seller-specific listings for authenticated seller
 router.get("/me", auth, protect(["seller", "admin"]), sellerListListings);
+// seller catalogues - adverts with their items
+router.get("/catalogue", auth, protect(["seller", "admin"]), getSellerCatalogue);
+// get advert/catalogue with all its items (public)
+router.get("/advert/:id", getAdvertWithItems);
 // single listing by id (kept last so static routes like /me don't get shadowed)
 router.get("/:id", getListing);
-// create/update/delete require auth
+// create standard listing (isAdvertisement = false)
 router.post("/", auth, createListing);
+// create advert/catalogue (isAdvertisement = true, requires subscriptionId)
+router.post("/advert", auth, createAdvertListing);
+// add listing to an existing advert/catalogue
+router.post("/advert/:advertId/items", auth, addListingToAdvert);
 router.put("/:id", auth, updateListing);
 router.delete("/:id", auth, deleteListing);
 

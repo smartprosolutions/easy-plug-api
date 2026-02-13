@@ -33,6 +33,7 @@ dist/
 .env
 .env.*
 config/config.env
+config/config.json
 
 # OS / Editor files
 .DS_Store
