@@ -18,7 +18,7 @@
     "sequelize-cli": "^6.6.3"
   },
   "scripts": {
-    "start": "node app.js",
+    "start": "pm2 start app.js --name easy-plug-api --watch",
     "dev": "nodemon --watch . --exec \"node app.js\"",
     "migrate": "npx sequelize-cli db:migrate:undo:all && npx sequelize-cli db:migrate",
     "seed": "npx sequelize-cli db:seed:all"
