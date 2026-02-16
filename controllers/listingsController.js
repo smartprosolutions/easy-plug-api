@@ -707,6 +707,35 @@ async function handleListingFileUploads(req, sellerEmail, folderName) {
   return uploadedFiles;
 }
 
+async function resolveListingUploadFolder(listing) {
+  if (listing.isAdvertisement) {
+    const sellerSub = await SellerSubscription.findOne({
+      where: { listingId: listing.listingId },
+      attributes: ["subscriptionId"],
+    });
+
+    if (!sellerSub) return "adverts";
+
+    const foundSubscription = await Subscription.findByPk(
+      sellerSub.subscriptionId,
+      {
+        attributes: ["name", "subscriptionId"],
+      },
+    );
+
+    const baseName =
+      foundSubscription?.name ||
+      `sub-${foundSubscription?.subscriptionId || sellerSub.subscriptionId}`;
+    return baseName.replace(/[^a-z0-9-_]/gi, "_");
+  }
+
+  if (listing.parentAdvertId) {
+    return "catalogue-items";
+  }
+
+  return "standard";
+}
+
 // Create a standard listing (isAdvertisement = false)
 async function createListing(req, res, next) {
   try {
@@ -730,6 +759,7 @@ async function createListing(req, res, next) {
       status,
       expiresAt,
       condition,
+      url,
     } = req.body;
 
     // Handle file uploads
@@ -751,6 +781,7 @@ async function createListing(req, res, next) {
       condition: condition || "new",
       isAdvertisement: false,
       expiresAt: expiresAt || null,
+      url,
       images: uploadedFiles.length > 0 ? uploadedFiles : null,
     };
 
@@ -824,6 +855,7 @@ async function createAdvertListing(req, res, next) {
       subscriptionId,
       subscriptionTierUsersPerHour,
       pricingTier,
+      url,
     } = req.body;
 
     // Handle expires_at (underscore) or expiresAt (camelCase)
@@ -884,6 +916,7 @@ async function createAdvertListing(req, res, next) {
       isAdvertisement: true,
       expiresAt: expiration,
       parentAdvertId: null,
+      url,
       images: uploadedFiles.length > 0 ? uploadedFiles : null,
     };
 
@@ -965,6 +998,7 @@ async function addListingToAdvert(req, res, next) {
       type,
       status,
       condition,
+      url,
     } = req.body;
 
     // Handle file uploads
@@ -987,6 +1021,7 @@ async function addListingToAdvert(req, res, next) {
       isAdvertisement: false,
       expiresAt: advert.expiresAt,
       parentAdvertId: advertId,
+      url,
       images: uploadedFiles.length > 0 ? uploadedFiles : null,
     };
 
@@ -1118,6 +1153,10 @@ async function getSellerCatalogue(req, res, next) {
 }
 
 async function updateListing(req, res, next) {
+  let uploadedFiles = [];
+  let uploadFolder = null;
+  let ownerEmail = null;
+
   try {
     const { id } = req.params;
     const userId = req.user && req.user.id;
@@ -1127,6 +1166,43 @@ async function updateListing(req, res, next) {
       return res
         .status(404)
         .json({ success: false, message: "Listing not found" });
+
+    // Handle optional new image uploads using original folder strategy
+    const owner = await User.findByPk(item.sellerId, {
+      attributes: ["email"],
+    });
+    ownerEmail = owner?.email || (req.user && req.user.email) || "unknown";
+
+    const retainedImages = parseArrayField(
+      req.body.retainedImages || req.body.existingImages,
+    );
+    const removedImages = parseArrayField(req.body.removedImages);
+
+    if (req.files && (req.files.images || req.files.file)) {
+      uploadFolder = await resolveListingUploadFolder(item);
+      uploadedFiles = await handleListingFileUploads(
+        req,
+        ownerEmail,
+        uploadFolder,
+      );
+    }
+
+    let baseImages =
+      retainedImages.length > 0
+        ? retainedImages
+        : Array.isArray(item.images)
+          ? item.images
+          : [];
+
+    if (removedImages.length > 0) {
+      baseImages = baseImages.filter((img) => !removedImages.includes(img));
+    }
+
+    req.body.images = [...new Set([...baseImages, ...uploadedFiles])];
+
+    delete req.body.retainedImages;
+    delete req.body.existingImages;
+    delete req.body.removedImages;
 
     // Track price change and notify wishlisters
     if (
@@ -1179,6 +1255,27 @@ async function updateListing(req, res, next) {
     await item.update(req.body);
     return res.json({ success: true, listing: item });
   } catch (err) {
+    // cleanup uploaded files on failure
+    try {
+      if (uploadedFiles.length > 0 && uploadFolder && ownerEmail) {
+        for (const fileName of uploadedFiles) {
+          const p = path.join(
+            process.cwd(),
+            "uploads",
+            "listings",
+            ownerEmail,
+            uploadFolder,
+            fileName,
+          );
+          if (fs.existsSync(p)) fs.unlinkSync(p);
+        }
+      }
+    } catch (cleanupErr) {
+      console.error(
+        "Error cleaning uploaded files after update failure:",
+        cleanupErr,
+      );
+    }
     next(err);
   }
 }
