@@ -73,6 +73,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ARRAY(DataTypes.STRING),
         allowNull: true,
       },
+      url: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       keyFeatures: {
         type: DataTypes.ARRAY(DataTypes.STRING),
         allowNull: true,
