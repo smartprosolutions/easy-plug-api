@@ -1,4 +1,9 @@
-const { chats: Chat, chatMessages: ChatMessage } = require("../models");
+const {
+  chats: Chat,
+  chatMessages: ChatMessage,
+  listings: Listing,
+  users: User,
+} = require("../models");
 const { success, fail } = require("../utils/response");
 
 // create or return existing chat between buyer and seller for a listing
@@ -15,7 +20,21 @@ async function createOrGetChat(req, res, next) {
     if (!chat) {
       chat = await Chat.create({ listingId, buyerId, sellerId });
     }
-    return success(res, { chat });
+
+    const enrichedChat = await Chat.findByPk(chat.chatId, {
+      include: [
+        {
+          model: Listing,
+        },
+        {
+          model: User,
+          as: "seller",
+          attributes: { exclude: ["passwordHash"] },
+        },
+      ],
+    });
+
+    return success(res, { chat: enrichedChat || chat });
   } catch (err) {
     next(err);
   }
@@ -33,6 +52,16 @@ async function listChats(req, res, next) {
           { sellerId: userId },
         ],
       },
+      include: [
+        {
+          model: Listing,
+        },
+        {
+          model: User,
+          as: "seller",
+          attributes: { exclude: ["passwordHash"] },
+        },
+      ],
     });
     return success(res, { chats: items });
   } catch (err) {
