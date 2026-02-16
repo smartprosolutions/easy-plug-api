@@ -44,7 +44,7 @@ app.use(`${API_BASE_URL}`, AppRouter);
 
 app.use(ErrorMid);
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT} and version ${VERSION}`);
   sequelize.authenticate();
   console.log(`Database connected on port ${5432}`);
