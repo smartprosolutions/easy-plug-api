@@ -1,100 +1,221 @@
 {
   "info": {
-    "name": "easy-plug-api",
-    "description": "Postman collection to test easy-plug-api endpoints",
+    "name": "EasyPlug API - Complete Collection",
+    "description": "Complete Postman collection for EasyPlug API with automatic token and ID management",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_postman_id": "easy-plug-api-collection"
+    "_postman_id": "easyplug-api-v2"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8000/api/v1" },
-    { "key": "authToken", "value": "" }
+    { "key": "baseUrl", "value": "http://localhost:8000/api/v1", "type": "string" },
+    { "key": "authToken", "value": "", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "sellerId", "value": "", "type": "string" },
+    { "key": "listingId", "value": "", "type": "string" },
+    { "key": "chatId", "value": "", "type": "string" },
+    { "key": "notificationId", "value": "", "type": "string" },
+    { "key": "transactionId", "value": "", "type": "string" }
   ],
   "item": [
     {
-      "name": "Auth",
+      "name": "🔐 Authentication",
+      "description": "User authentication endpoints with automatic token capture",
       "item": [
         {
-          "name": "Register",
+          "name": "Register Buyer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.token) {",
+                  "        pm.collectionVariables.set('authToken', jsonData.token);",
+                  "        console.log('✅ Auth token saved:', jsonData.token);",
+                  "    }",
+                  "    if (jsonData.user && jsonData.user.userId) {",
+                  "        pm.collectionVariables.set('userId', jsonData.user.userId);",
+                  "        console.log('✅ User ID saved:', jsonData.user.userId);",
+                  "    }",
+                  "    pm.test('Registration successful', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"secret\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\"\n}"
+              "raw": "{\n  \"email\": \"buyer@test.com\",\n  \"password\": \"Test123!\",\n  \"confirmPassword\": \"Test123!\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"dateOfBirth\": \"1995-05-15\",\n  \"phone\": \"+27821234567\",\n  \"title\": \"Mr\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/register",
               "host": ["{{baseUrl}}"],
               "path": ["auth", "register"]
-            }
-          }
+            },
+            "description": "Register a new buyer account with DOB and password confirmation"
+          },
+          "response": []
         },
         {
-          "name": "Login (email)",
+          "name": "Register Seller",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.token) {",
+                  "        pm.collectionVariables.set('authToken', jsonData.token);",
+                  "        console.log('✅ Auth token saved:', jsonData.token);",
+                  "    }",
+                  "    if (jsonData.user && jsonData.user.id) {",
+                  "        pm.collectionVariables.set('sellerId', jsonData.user.id);",
+                  "        console.log('✅ Seller ID saved:', jsonData.user.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"secret\"\n}"
+              "raw": "{\n  \"email\": \"seller@test.com\",\n  \"password\": \"Test123!\",\n  \"confirmPassword\": \"Test123!\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith\",\n  \"dateOfBirth\": \"1990-08-20\",\n  \"phone\": \"+27829876543\",\n  \"title\": \"Ms\",\n  \"businessName\": \"Jane's Electronics\",\n  \"businessEmail\": \"business@janestore.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register-seller",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register-seller"]
+            },
+            "description": "Register a new seller account with business information"
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.token) {",
+                  "        pm.collectionVariables.set('authToken', jsonData.token);",
+                  "        console.log('✅ Auth token saved:', jsonData.token);",
+                  "    }",
+                  "    if (jsonData.user && jsonData.user.userId) {",
+                  "        pm.collectionVariables.set('userId', jsonData.user.userId);",
+                  "        console.log('✅ User ID saved:', jsonData.user.userId);",
+                  "    }",
+                  "    pm.test('Login successful', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.token).to.be.a('string');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"buyer@test.com\",\n  \"password\": \"Test123!\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
               "host": ["{{baseUrl}}"],
               "path": ["auth", "login"]
-            }
-          }
+            },
+            "description": "Login with email and password"
+          },
+          "response": []
         },
         {
-          "name": "Login (Google) - ID token",
+          "name": "Send Verification Code",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.verificationToken) {",
+                  "        pm.collectionVariables.set('verificationToken', jsonData.verificationToken);",
+                  "        console.log('✅ Verification token saved');",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"idToken\": \"<GOOGLE_ID_TOKEN>\"\n}"
+              "raw": "{\n  \"email\": \"buyer@test.com\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/auth/google",
+              "raw": "{{baseUrl}}/auth/send-verification-code",
               "host": ["{{baseUrl}}"],
-              "path": ["auth", "google"]
-            }
-          }
+              "path": ["auth", "send-verification-code"]
+            },
+            "description": "Send 6-digit verification code to email"
+          },
+          "response": []
         },
         {
-          "name": "Forgot Password",
+          "name": "Verify Code",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"test@example.com\"\n}"
+              "raw": "{\n  \"verificationToken\": \"{{verificationToken}}\",\n  \"code\": \"123456\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/auth/forgot-password",
+              "raw": "{{baseUrl}}/auth/verify-code",
               "host": ["{{baseUrl}}"],
-              "path": ["auth", "forgot-password"]
-            }
-          }
-        },
-        {
-          "name": "Reset Password",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"resetToken\": \"<RESET_TOKEN>\",\n  \"newPassword\": \"newsecret\"\n}"
+              "path": ["auth", "verify-code"]
             },
-            "url": {
-              "raw": "{{baseUrl}}/auth/reset-password",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "reset-password"]
-            }
-          }
+            "description": "Verify the 6-digit code"
+          },
+          "response": []
         },
         {
-          "name": "Get Logged-in User",
+          "name": "Get Current User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('User data retrieved', function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.user).to.be.an('object');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -104,68 +225,92 @@
               "raw": "{{baseUrl}}/auth/me",
               "host": ["{{baseUrl}}"],
               "path": ["auth", "me"]
+            },
+            "description": "Get currently authenticated user info"
+          },
+          "response": []
+        },
+        {
+          "name": "Forgot Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.resetToken) {",
+                  "        pm.collectionVariables.set('resetToken', jsonData.resetToken);",
+                  "        console.log('✅ Reset token saved');",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"buyer@test.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "forgot-password"]
+            },
+            "description": "Request password reset token"
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resetToken\": \"{{resetToken}}\",\n  \"newPassword\": \"NewTest123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "reset-password"]
+            },
+            "description": "Reset password using reset token"
+          },
+          "response": []
         }
       ]
     },
     {
-      "name": "Users",
+      "name": "📦 Listings",
+      "description": "Product/service listings with enhanced features",
       "item": [
-        {
-          "name": "List Users",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/users",
-              "host": ["{{baseUrl}}"],
-              "path": ["users"]
-            }
-          }
-        },
-        {
-          "name": "Get User",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/users/:id",
-              "host": ["{{baseUrl}}"],
-              "path": ["users", ":id"]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Listings",
-      "item": [
-        {
-          "name": "List Listings (auth)",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{authToken}}" }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/listings",
-              "host": ["{{baseUrl}}"],
-              "path": ["listings"]
-            }
-          }
-        },
-        {
-          "name": "Get Listing",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/listings/:id",
-              "host": ["{{baseUrl}}"],
-              "path": ["listings", ":id"]
-            }
-          }
-        },
         {
           "name": "Create Listing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.listing && jsonData.listing.listingId) {",
+                  "        pm.collectionVariables.set('listingId', jsonData.listing.listingId);",
+                  "        console.log('✅ Listing ID saved:', jsonData.listing.listingId);",
+                  "    }",
+                  "    pm.test('Listing created', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -174,171 +319,185 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Sample\",\n  \"description\": \"Sample desc\",\n  \"price\": 100\n}"
+              "raw": "{\n  \"title\": \"iPhone 15 Pro Max 256GB\",\n  \"description\": \"Brand new iPhone 15 Pro Max in Titanium Blue. Never used, still sealed in original packaging. Comes with 1 year Apple warranty.\",\n  \"price\": 18999.99,\n  \"category\": \"electronics\",\n  \"type\": \"sale\",\n  \"condition\": \"new\",\n  \"keyFeatures\": [\n    \"256GB Storage\",\n    \"A17 Pro Chip\",\n    \"Titanium Design\",\n    \"48MP Camera\",\n    \"USB-C Port\",\n    \"Action Button\"\n  ],\n  \"status\": \"active\",\n  \"isAdvertisement\": false\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/listings",
               "host": ["{{baseUrl}}"],
               "path": ["listings"]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Subscriptions",
-      "item": [
+            },
+            "description": "Create a new listing with key features array"
+          },
+          "response": []
+        },
         {
-          "name": "List Subscriptions",
+          "name": "List All Listings (Mixed)",
           "request": {
             "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/subscriptions",
+              "raw": "{{baseUrl}}/listings?page=1",
               "host": ["{{baseUrl}}"],
-              "path": ["subscriptions"]
-            }
-          }
+              "path": ["listings"],
+              "query": [{ "key": "page", "value": "1" }]
+            },
+            "description": "List all listings (ads + standard mixed)"
+          },
+          "response": []
         },
         {
-          "name": "Create Subscription",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Premium\",\n  \"durationInHours\": 24,\n  \"price\": 9.99\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/subscriptions",
-              "host": ["{{baseUrl}}"],
-              "path": ["subscriptions"]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Seller Info & Subscriptions",
-      "item": [
-        {
-          "name": "Get Seller Info",
+          "name": "List Standard Listings (20/page)",
           "request": {
             "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/seller-info",
-              "host": ["{{baseUrl}}"],
-              "path": ["seller-info"]
-            }
-          }
-        },
-        {
-          "name": "Create Seller Subscription",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"sellerId\": \"<sellerId>\",\n  \"listingId\": \"<listingId>\",\n  \"subscriptionId\": 1\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/seller-subscriptions",
-              "host": ["{{baseUrl}}"],
-              "path": ["seller-subscriptions"]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Ratings",
-      "item": [
-        {
-          "name": "Create Rating",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"sellerId\": \"<sellerId>\",\n  \"rating\": 5,\n  \"comment\": \"Great\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/ratings",
-              "host": ["{{baseUrl}}"],
-              "path": ["ratings"]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Transactions & Payments",
-      "item": [
-        {
-          "name": "Create Transaction",
-          "request": {
-            "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
               { "key": "Authorization", "value": "Bearer {{authToken}}" }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"listingId\": \"<listingId>\",\n  \"sellerId\": \"<sellerId>\",\n  \"amount\": 100\n}"
-            },
             "url": {
-              "raw": "{{baseUrl}}/transactions",
+              "raw": "{{baseUrl}}/listings/standard?page=1",
               "host": ["{{baseUrl}}"],
-              "path": ["transactions"]
-            }
-          }
+              "path": ["listings", "standard"],
+              "query": [{ "key": "page", "value": "1" }]
+            },
+            "description": "List standard (non-ad) listings - 20 items per page"
+          },
+          "response": []
         },
         {
-          "name": "Create PayFast Payment (returns payload)",
+          "name": "List Ad Listings",
           "request": {
-            "method": "POST",
+            "method": "GET",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
               { "key": "Authorization", "value": "Bearer {{authToken}}" }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"transactionId\": \"<transactionId>\"\n}"
-            },
             "url": {
-              "raw": "{{baseUrl}}/payments/create",
+              "raw": "{{baseUrl}}/listings/ads?page=1",
               "host": ["{{baseUrl}}"],
-              "path": ["payments", "create"]
-            }
-          }
+              "path": ["listings", "ads"],
+              "query": [{ "key": "page", "value": "1" }]
+            },
+            "description": "List advertisement listings - 8 items per page"
+          },
+          "response": []
         },
         {
-          "name": "Simulate PayFast IPN (for testing)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/x-www-form-urlencoded"
+          "name": "Get Listing Detail (Enhanced)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Listing has enhanced data', function () {",
+                  "        pm.expect(jsonData.listing).to.have.property('views');",
+                  "        pm.expect(jsonData.listing).to.have.property('sellerRating');",
+                  "        pm.expect(jsonData.listing).to.have.property('sellerJoinDate');",
+                  "        pm.expect(jsonData.listing).to.have.property('relatedListings');",
+                  "        pm.expect(jsonData.listing).to.have.property('priceHistory');",
+                  "        pm.expect(jsonData.listing).to.have.property('inWishlist');",
+                  "    });",
+                  "    if (jsonData.listing.seller && jsonData.listing.seller.userId) {",
+                  "        pm.collectionVariables.set('sellerId', jsonData.listing.seller.userId);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
               }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["listings", "{{listingId}}"]
+            },
+            "description": "Get listing detail with: views, seller rating, join date, related listings (4), price history, wishlist status"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Listing (Track Price Change)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
             ],
             "body": {
               "mode": "raw",
-              "raw": "m_payment_id=<transactionId>&payment_id=12345&amount_gross=100&payment_status=COMPLETE"
+              "raw": "{\n  \"price\": 17999.99,\n  \"description\": \"Price reduced! Brand new iPhone 15 Pro Max in Titanium Blue.\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/payments/payfast/notify",
+              "raw": "{{baseUrl}}/listings/{{listingId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["payments", "payfast", "notify"]
-            }
-          }
+              "path": ["listings", "{{listingId}}"]
+            },
+            "description": "Update listing - price changes are automatically tracked in price history"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Listing",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["listings", "{{listingId}}"]
+            },
+            "description": "Delete a listing"
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Listings (Seller)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["listings", "me"]
+            },
+            "description": "Get all listings for authenticated seller"
+          },
+          "response": []
         }
       ]
     },
     {
-      "name": "Chats & Messages",
+      "name": "❤️ Wishlist",
+      "description": "User wishlist management",
       "item": [
         {
-          "name": "Create/Get Chat",
+          "name": "Add to Wishlist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    pm.test('Added to wishlist', function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -347,17 +506,239 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"listingId\": \"<listingId>\",\n  \"sellerId\": \"<sellerId>\"\n}"
+              "raw": "{\n  \"listingId\": \"{{listingId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wishlist",
+              "host": ["{{baseUrl}}"],
+              "path": ["wishlist"]
+            },
+            "description": "Add a listing to user's wishlist"
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Wishlist",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wishlist?page=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["wishlist"],
+              "query": [{ "key": "page", "value": "1" }]
+            },
+            "description": "Get all items in user's wishlist (20 per page)"
+          },
+          "response": []
+        },
+        {
+          "name": "Check if in Wishlist",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wishlist/check/{{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["wishlist", "check", "{{listingId}}"]
+            },
+            "description": "Check if a specific listing is in user's wishlist"
+          },
+          "response": []
+        },
+        {
+          "name": "Remove from Wishlist",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wishlist/{{listingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["wishlist", "{{listingId}}"]
+            },
+            "description": "Remove a listing from wishlist"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔔 Notifications",
+      "description": "User notifications system",
+      "item": [
+        {
+          "name": "Get My Notifications",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.notifications && jsonData.notifications.length > 0) {",
+                  "        pm.collectionVariables.set('notificationId', jsonData.notifications[0].notificationId);",
+                  "        console.log('✅ Notification ID saved:', jsonData.notifications[0].notificationId);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?page=1&unreadOnly=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "unreadOnly", "value": "false" }
+              ]
+            },
+            "description": "Get all notifications for user (20 per page)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Unread Notifications Only",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?page=1&unreadOnly=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "unreadOnly", "value": "true" }
+              ]
+            },
+            "description": "Get only unread notifications"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Unread Count",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/unread-count",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "unread-count"]
+            },
+            "description": "Get count of unread notifications (for badge display)"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Notification as Read",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{notificationId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "{{notificationId}}", "read"]
+            },
+            "description": "Mark a single notification as read"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark All as Read",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/read-all",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "read-all"]
+            },
+            "description": "Mark all notifications as read"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Notification",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{notificationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "{{notificationId}}"]
+            },
+            "description": "Delete a notification"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "💬 Chats & Messages",
+      "description": "Chat system - one chat per listing/buyer/seller combination",
+      "item": [
+        {
+          "name": "Create or Get Chat",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.chat && jsonData.chat.chatId) {",
+                  "        pm.collectionVariables.set('chatId', jsonData.chat.chatId);",
+                  "        console.log('✅ Chat ID saved:', jsonData.chat.chatId);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"listingId\": \"{{listingId}}\",\n  \"sellerId\": \"{{sellerId}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/chats",
               "host": ["{{baseUrl}}"],
               "path": ["chats"]
-            }
-          }
+            },
+            "description": "Create a new chat or get existing chat for this listing/seller combination"
+          },
+          "response": []
         },
         {
-          "name": "List Chats",
+          "name": "List My Chats",
           "request": {
             "method": "GET",
             "header": [
@@ -367,8 +748,26 @@
               "raw": "{{baseUrl}}/chats",
               "host": ["{{baseUrl}}"],
               "path": ["chats"]
-            }
-          }
+            },
+            "description": "Get all chats for authenticated user (as buyer or seller)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Chat with Messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chats/{{chatId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chats", "{{chatId}}"]
+            },
+            "description": "Get chat details with all messages"
+          },
+          "response": []
         },
         {
           "name": "Send Message",
@@ -380,19 +779,175 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"chatId\": \"<chatId>\",\n  \"message\": \"Hi\"\n}"
+              "raw": "{\n  \"chatId\": \"{{chatId}}\",\n  \"receiverId\": \"{{sellerId}}\",\n  \"message\": \"Hi, is this item still available? Can we negotiate the price?\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/chat-messages",
               "host": ["{{baseUrl}}"],
               "path": ["chat-messages"]
-            }
-          }
+            },
+            "description": "Send a message in a chat"
+          },
+          "response": []
         }
       ]
     },
     {
-      "name": "Addresses",
+      "name": "⭐ Ratings & Reviews",
+      "description": "Seller rating system",
+      "item": [
+        {
+          "name": "Create Rating",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sellerId\": \"{{sellerId}}\",\n  \"rating\": 5,\n  \"comment\": \"Excellent seller! Very responsive and item was exactly as described. Fast delivery too!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ratings",
+              "host": ["{{baseUrl}}"],
+              "path": ["ratings"]
+            },
+            "description": "Rate a seller (1-5 stars with optional comment)"
+          },
+          "response": []
+        },
+        {
+          "name": "List All Ratings",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/ratings",
+              "host": ["{{baseUrl}}"],
+              "path": ["ratings"]
+            },
+            "description": "Get all ratings in the system"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "💳 Transactions & Payments",
+      "description": "Transaction and payment processing",
+      "item": [
+        {
+          "name": "Create Transaction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.transaction && jsonData.transaction.transactionId) {",
+                  "        pm.collectionVariables.set('transactionId', jsonData.transaction.transactionId);",
+                  "        console.log('✅ Transaction ID saved:', jsonData.transaction.transactionId);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"listingId\": \"{{listingId}}\",\n  \"sellerId\": \"{{sellerId}}\",\n  \"amount\": 18999.99,\n  \"status\": \"pending\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions"]
+            },
+            "description": "Create a new transaction for a listing purchase"
+          },
+          "response": []
+        },
+        {
+          "name": "List My Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions"]
+            },
+            "description": "Get all transactions for authenticated user"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👤 Users & Profile",
+      "description": "User management and profile",
+      "item": [
+        {
+          "name": "List All Users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"]
+            },
+            "description": "Get all users (admin)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}"]
+            },
+            "description": "Get user details by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Update My Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Updated\",\n  \"phone\": \"+27821111111\",\n  \"title\": \"Dr\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me"]
+            },
+            "description": "Update authenticated user's profile"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📍 Addresses",
+      "description": "User address management",
       "item": [
         {
           "name": "Create Address",
@@ -404,16 +959,100 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"streetName\": \"Main St\",\n  \"city\": \"Cape Town\"\n}"
+              "raw": "{\n  \"streetNumber\": \"123\",\n  \"streetName\": \"Long Street\",\n  \"suburb\": \"City Centre\",\n  \"city\": \"Cape Town\",\n  \"province\": \"Western Cape\",\n  \"country\": \"South Africa\",\n  \"postalCode\": \"8001\",\n  \"latitude\": -33.9249,\n  \"longitude\": 18.4241\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/addresses",
               "host": ["{{baseUrl}}"],
               "path": ["addresses"]
-            }
-          }
+            },
+            "description": "Create a new address for user"
+          },
+          "response": []
+        },
+        {
+          "name": "List My Addresses",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/addresses",
+              "host": ["{{baseUrl}}"],
+              "path": ["addresses"]
+            },
+            "description": "Get all addresses for authenticated user"
+          },
+          "response": []
         }
       ]
+    },
+    {
+      "name": "📊 Subscriptions",
+      "description": "Listing promotion subscriptions",
+      "item": [
+        {
+          "name": "List Subscription Plans",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions"]
+            },
+            "description": "Get all available subscription plans"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Subscription Plan",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Premium\",\n  \"durationInHours\": 168,\n  \"price\": 299.99,\n  \"status\": \"active\",\n  \"description\": \"7-day premium listing promotion\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions"]
+            },
+            "description": "Create a new subscription plan (admin)"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global pre-request script",
+          "console.log('🚀 Request to:', pm.request.url.toString());",
+          "console.log('🔑 Auth Token:', pm.collectionVariables.get('authToken') ? 'Set ✓' : 'Not Set ✗');"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test script",
+          "pm.test('Response time is less than 2000ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+          "});",
+          "",
+          "pm.test('Response has valid JSON', function () {",
+          "    pm.response.to.be.json;",
+          "});"
+        ]
+      }
     }
   ]
 }

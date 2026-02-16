@@ -13,6 +13,9 @@ const paymentsRoutes = require('./payments');
 const chatsRoutes = require('./chats');
 const chatMessagesRoutes = require('./chatMessages');
 const addressRoutes = require('./address');
+const wishlistRoutes = require('./wishlist');
+const notificationsRoutes = require('./notifications');
+const searchRoutes = require('./search');
 
 router.use('/auth', authRoutes);
 router.use('/subscriptions', subscriptionsRoutes);
@@ -26,5 +29,8 @@ router.use('/payments', paymentsRoutes);
 router.use('/chats', chatsRoutes);
 router.use('/chat-messages', chatMessagesRoutes);
 router.use('/addresses', addressRoutes);
+router.use('/wishlist', wishlistRoutes);
+router.use('/notifications', notificationsRoutes);
+router.use('/search', searchRoutes);
 
 module.exports = router;

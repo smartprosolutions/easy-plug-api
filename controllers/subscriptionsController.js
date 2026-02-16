@@ -1,7 +1,7 @@
 const {
   subscriptions: Subscription,
   sellerSubscription: SellerSubscription,
-  listings: Listing
+  listings: Listing,
 } = require("../models");
 
 async function listSubscriptions(req, res, next) {
@@ -36,7 +36,27 @@ async function getSubscription(req, res, next) {
 
 async function createSubscription(req, res, next) {
   try {
-    const payload = req.body;
+    const { name, durationInHours, description, status, pricingTiers } =
+      req.body;
+
+    // Parse pricingTiers if it comes as a string
+    let parsedTiers = pricingTiers;
+    if (typeof pricingTiers === "string") {
+      try {
+        parsedTiers = JSON.parse(pricingTiers);
+      } catch (e) {
+        parsedTiers = [];
+      }
+    }
+
+    const payload = {
+      name,
+      durationInHours,
+      description,
+      status,
+      pricingTiers: parsedTiers || [],
+    };
+
     const created = await Subscription.create(payload);
     return res.status(201).json({ success: true, subscription: created });
   } catch (err) {
@@ -52,7 +72,29 @@ async function updateSubscription(req, res, next) {
       return res
         .status(404)
         .json({ success: false, message: "Subscription not found" });
-    await sub.update(req.body);
+
+    const { name, durationInHours, description, status, pricingTiers } =
+      req.body;
+
+    // Parse pricingTiers if it comes as a string
+    let parsedTiers = pricingTiers;
+    if (typeof pricingTiers === "string") {
+      try {
+        parsedTiers = JSON.parse(pricingTiers);
+      } catch (e) {
+        parsedTiers = sub.pricingTiers; // keep existing on parse error
+      }
+    }
+
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (durationInHours !== undefined)
+      updates.durationInHours = durationInHours;
+    if (description !== undefined) updates.description = description;
+    if (status !== undefined) updates.status = status;
+    if (pricingTiers !== undefined) updates.pricingTiers = parsedTiers;
+
+    await sub.update(updates);
     return res.json({ success: true, subscription: sub });
   } catch (err) {
     next(err);
@@ -79,5 +121,5 @@ module.exports = {
   getSubscription,
   createSubscription,
   updateSubscription,
-  deleteSubscription
+  deleteSubscription,
 };

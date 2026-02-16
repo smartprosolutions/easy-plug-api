@@ -44,7 +44,9 @@ async function loginWithEmail(req, res, next) {
     const token = jwt.sign({ id: user.userId, email: user.email }, JWT_SECRET, {
       expiresIn: "7d"
     });
-    return res.json({ success: true, token });
+    // Exclude passwordHash from user details
+    const { passwordHash, ...userData } = user.toJSON();
+    return res.json({ success: true, token, user: userData });
   } catch (err) {
     console.log(err);
     next(err);
@@ -92,7 +94,8 @@ async function loginWithGoogle(req, res, next) {
         expiresIn: "7d"
       }
     );
-    return res.json({ success: true, accessToken });
+    const { passwordHash, ...userData } = user.toJSON();
+    return res.json({ success: true, accessToken, user: userData });
   } catch (err) {
     next(err);
   }
@@ -227,11 +230,17 @@ async function getLoggedInUserWithSellerInfo(req, res, next) {
 async function registerUser(req, res, next) {
   try {
     // require that the caller provide a regToken (from verifyCode) proving email ownership
-    const { email, password, firstName, lastName, regToken } = req.body;
+    const { email, password, confirmPassword, firstName, lastName, regToken } = req.body;
     if (!email || !password)
       return res
         .status(400)
         .json({ success: false, message: "Email and password are required" });
+
+    // Validate password confirmation
+    if (confirmPassword && password !== confirmPassword)
+      return res
+        .status(400)
+        .json({ success: false, message: "Passwords do not match" });
     // if (!regToken)
     //   return res.status(400).json({
     //     success: false,
@@ -270,7 +279,8 @@ async function registerUser(req, res, next) {
     const token = jwt.sign({ id: user.userId, email: user.email }, JWT_SECRET, {
       expiresIn: "7d"
     });
-    return res.status(201).json({ success: true, token });
+    const { passwordHash, ...userData } = user.toJSON();
+    return res.status(201).json({ success: true, token, user: userData });
   } catch (err) {
     next(err);
   }
@@ -436,6 +446,14 @@ async function registerSeller(req, res, next) {
       return res
         .status(400)
         .json({ success: false, message: "Email and password are required" });
+    }
+
+    // Validate password confirmation
+    const { confirmPassword } = req.body;
+    if (confirmPassword && password !== confirmPassword) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Passwords do not match" });
     }
     const existing = await User.findOne({ where: { email } });
     if (existing) {

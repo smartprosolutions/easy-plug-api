@@ -1,17 +1,11 @@
 {
   "development": {
-    "username": "easyplug_db_user",
-    "password": "uNaTTa0OgkgJsHg9WnQ22ZPacaCFyvK3",
+    "username": "postgres",
+    "password": "@Password123!",
     "database": "easyplug_db",
-    "host": "dpg-d3nv0vi4d50c739v4jhg-a.singapore-postgres.render.com",
+    "host": "localhost",
     "dialect": "postgres",
-    "port": 5432,
-    "dialectOptions": {
-      "ssl": {
-        "require": true,
-        "rejectUnauthorized": false
-      }
-    }
+    "port": 5432
   },
   "test": {
     "username": "root",
