@@ -128,8 +128,12 @@ async function listListings(req, res, next) {
     }
 
     // split into ads and standard
+    // Exclude catalogue child items from top-level list.
+    // Catalogue details are returned on getListing.
     let ads = filtered.filter((l) => !!l.isAdvertisement);
-    let standard = filtered.filter((l) => !l.isAdvertisement);
+    let standard = filtered.filter(
+      (l) => !l.isAdvertisement && !l.parentAdvertId,
+    );
 
     // Sort by distance if location provided, otherwise by date
     if (userLat !== null && userLon !== null) {
@@ -519,6 +523,45 @@ async function getListing(req, res, next) {
           model: User,
           as: "seller",
           attributes: { exclude: ["passwordHash"] },
+          include: [
+            {
+              model: Address,
+              attributes: [
+                "addressId",
+                "latitude",
+                "longitude",
+                "streetNumber",
+                "streetName",
+                "suburb",
+                "city",
+                "province",
+                "country",
+                "postalCode",
+                "createdAt",
+              ],
+              separate: true,
+              limit: 1,
+              order: [["createdAt", "DESC"]],
+            },
+          ],
+        },
+        {
+          model: Listing,
+          as: "catalogueItems",
+          where: { isAdvertisement: false },
+          required: false,
+        },
+        {
+          model: Listing,
+          as: "parentAdvert",
+          required: false,
+          include: [
+            {
+              model: User,
+              as: "seller",
+              attributes: ["userId", "firstName", "lastName", "profilePicture"],
+            },
+          ],
         },
         {
           model: SellerSubscription,
@@ -581,14 +624,16 @@ async function getListing(req, res, next) {
     }
 
     // Attach the latest address for the seller
-    if (item.sellerId) {
-      const latestAddress = await Address.findOne({
-        where: { userId: item.sellerId },
-        order: [["createdAt", "DESC"]],
-      });
-      if (latestAddress) {
-        item.dataValues.address = latestAddress;
-      }
+    if (item.seller && item.seller.addresses && item.seller.addresses[0]) {
+      const latestAddress = item.seller.addresses[0];
+      item.dataValues.address = latestAddress;
+      item.dataValues.sellerAddress = latestAddress;
+    }
+
+    item.dataValues.isCatalogueContainer = !!item.isAdvertisement;
+    item.dataValues.isCatalogueItem = !!item.parentAdvertId;
+    if (item.parentAdvert) {
+      item.dataValues.catalogue = item.parentAdvert;
     }
 
     // Get seller rating (average)
