@@ -92,7 +92,6 @@ async function removeFromWishlist(req, res, next) {
 async function getMyWishlist(req, res, next) {
   try {
     const userId = req.user && req.user.id;
-    if (!userId) return fail(res, "User not authenticated", 401);
 
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
     const pageSize = 20;
