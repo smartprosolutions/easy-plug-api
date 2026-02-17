@@ -4,6 +4,7 @@ const {
   listings: Listing,
   users: User,
 } = require("../models");
+const { Op } = require("sequelize");
 const { success, fail } = require("../utils/response");
 const { createNotification } = require("./notificationsController");
 
@@ -82,9 +83,54 @@ async function listMessages(req, res, next) {
 // mark a message as read
 async function markAsRead(req, res, next) {
   try {
+    const userId = req.user && req.user.id;
+    if (!userId) return fail(res, "User not authenticated", 401);
+
+    const { chatId } = req.params;
+
+    if (chatId) {
+      const chat = await Chat.findOne({
+        where: {
+          [Op.or]: [{ id: chatId }, { chatId }],
+        },
+        attributes: ["id", "chatId", "buyerId", "sellerId"],
+      });
+
+      if (!chat) return fail(res, "Chat not found", 404);
+
+      if (chat.buyerId !== userId && chat.sellerId !== userId) {
+        return fail(res, "Not authorized for this chat", 403);
+      }
+
+      const resolvedChatId = chat.chatId || chat.id;
+
+      const [updatedCount] = await ChatMessage.update(
+        { isRead: true },
+        {
+          where: {
+            chatId: resolvedChatId,
+            isRead: false,
+            senderId: { [Op.ne]: userId },
+            [Op.or]: [{ receiverId: userId }, { receiverId: null }],
+          },
+        },
+      );
+
+      return success(res, { chatId: resolvedChatId, updatedCount });
+    }
+
     const { id } = req.params; // message id
     const msg = await ChatMessage.findByPk(id);
     if (!msg) return fail(res, "Message not found", 404);
+
+    if (msg.senderId === userId) {
+      return fail(res, "Cannot mark your own sent message as read", 403);
+    }
+
+    if (msg.receiverId && msg.receiverId !== userId) {
+      return fail(res, "Not authorized for this message", 403);
+    }
+
     msg.isRead = true;
     await msg.save();
     return success(res, { message: msg });
