@@ -4,6 +4,7 @@ const {
   listings: Listing,
   users: User,
 } = require("../models");
+const { Op } = require("sequelize");
 const { success, fail } = require("../utils/response");
 
 // create or return existing chat between buyer and seller for a listing
@@ -21,7 +22,8 @@ async function createOrGetChat(req, res, next) {
       chat = await Chat.create({ listingId, buyerId, sellerId });
     }
 
-    const enrichedChat = await Chat.findByPk(chat.chatId, {
+    const chatPk = chat.chatId || chat.id;
+    const enrichedChat = await Chat.findByPk(chatPk, {
       include: [
         {
           model: Listing,
@@ -45,12 +47,10 @@ async function listChats(req, res, next) {
   try {
     const userId = req.user && req.user.id;
     if (!userId) return fail(res, "User not authenticated", 401);
+
     const items = await Chat.findAll({
       where: {
-        [require("sequelize").Op.or]: [
-          { buyerId: userId },
-          { sellerId: userId },
-        ],
+        [Op.or]: [{ buyerId: userId }, { sellerId: userId }],
       },
       include: [
         {
@@ -63,7 +63,54 @@ async function listChats(req, res, next) {
         },
       ],
     });
-    return success(res, { chats: items });
+
+    const chatIds = items
+      .map((chat) => chat.chatId || chat.id)
+      .filter((chatId) => chatId != null);
+    const lastMessageByChat = new Map();
+    const unreadCountByChat = new Map();
+
+    if (chatIds.length > 0) {
+      const [messages, unreadMessages] = await Promise.all([
+        ChatMessage.findAll({
+          where: { chatId: { [Op.in]: chatIds } },
+          order: [
+            ["chatId", "ASC"],
+            ["createdAt", "DESC"],
+          ],
+        }),
+        ChatMessage.findAll({
+          where: {
+            chatId: { [Op.in]: chatIds },
+            isRead: false,
+            senderId: { [Op.ne]: userId },
+            [Op.or]: [{ receiverId: userId }, { receiverId: null }],
+          },
+          attributes: ["chatId"],
+        }),
+      ]);
+
+      for (const message of messages) {
+        if (!lastMessageByChat.has(message.chatId)) {
+          lastMessageByChat.set(message.chatId, message);
+        }
+      }
+
+      for (const message of unreadMessages) {
+        const current = unreadCountByChat.get(message.chatId) || 0;
+        unreadCountByChat.set(message.chatId, current + 1);
+      }
+    }
+
+    const chats = items.map((chat) => {
+      const plainChat = chat.toJSON();
+      const chatPk = chat.chatId || chat.id;
+      plainChat.lastMessage = lastMessageByChat.get(chatPk) || null;
+      plainChat.unreadCount = unreadCountByChat.get(chatPk) || 0;
+      return plainChat;
+    });
+
+    return success(res, { chats });
   } catch (err) {
     next(err);
   }
@@ -75,8 +122,9 @@ async function getChat(req, res, next) {
     const { id } = req.params;
     const chat = await Chat.findByPk(id);
     if (!chat) return fail(res, "Chat not found", 404);
+    const chatPk = chat.chatId || chat.id;
     const messages = await ChatMessage.findAll({
-      where: { chatId: chat.chatId },
+      where: { chatId: chatPk },
       order: [["createdAt", "ASC"]],
     });
     return success(res, { chat, messages });
