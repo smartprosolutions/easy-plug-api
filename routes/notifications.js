@@ -10,10 +10,10 @@ const {
 const auth = require("../middleware/auth");
 
 // All notification routes require authentication
-router.get("/", auth, getMyNotifications);
-router.get("/unread-count", auth, getUnreadCount);
-router.put("/:id/read", auth, markAsRead);
-router.put("/read-all", auth, markAllAsRead);
-router.delete("/:id", auth, deleteNotification);
+router.get("/", getMyNotifications);
+router.get("/unread-count", getUnreadCount);
+router.put("/:id/read", markAsRead);
+router.put("/read-all", markAllAsRead);
+router.delete("/:id", deleteNotification);
 
 module.exports = router;
