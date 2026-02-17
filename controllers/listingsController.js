@@ -35,7 +35,6 @@ async function listListings(req, res, next) {
   try {
     // require authenticated user so we can return listings the user has not seen
     const userId = req.user && req.user.id;
-    if (!userId) return fail(res, "User not authenticated", 401);
 
     // Get optional location parameters for proximity sorting
     const { latitude, longitude, maxDistance } = req.query;
