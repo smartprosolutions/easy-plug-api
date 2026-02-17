@@ -169,10 +169,83 @@ async function listListings(req, res, next) {
 
     const pageListings = [...topAds, ...stdItems, ...bottomAds];
 
+    const listingIds = [
+      ...new Set(pageListings.map((l) => l.listingId).filter(Boolean)),
+    ];
+    const ratingsByListing = new Map();
+    let allPageRatings = [];
+
+    if (listingIds.length > 0) {
+      const listingRatings = await Rating.findAll({
+        where: { listingId: { [Op.in]: listingIds } },
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["userId", "firstName", "lastName", "profilePicture"],
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+      });
+
+      for (const r of listingRatings) {
+        const lid = r.listingId;
+        const existing = ratingsByListing.get(lid) || [];
+        existing.push(r);
+        ratingsByListing.set(lid, existing);
+      }
+
+      allPageRatings = listingRatings
+        .map((r) => Number(r.rating))
+        .filter((val) => Number.isFinite(val));
+    }
+
+    for (const listing of pageListings) {
+      const listingRatings = ratingsByListing.get(listing.listingId) || [];
+      const ratingValues = listingRatings
+        .map((r) => Number(r.rating))
+        .filter((val) => Number.isFinite(val));
+
+      const avg =
+        ratingValues.length > 0
+          ? Number(
+              (
+                ratingValues.reduce((sum, current) => sum + current, 0) /
+                ratingValues.length
+              ).toFixed(1),
+            )
+          : 0;
+
+      listing.dataValues.averageRating = avg;
+      listing.dataValues.ratings = listingRatings.map((r) => ({
+        ratingId: r.ratingId,
+        listingId: r.listingId,
+        sellerId: r.sellerId,
+        userId: r.userId,
+        rating: r.rating,
+        comment: r.comment,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+        user: r.user,
+      }));
+    }
+
+    const overallAverageRating =
+      allPageRatings.length > 0
+        ? Number(
+            (
+              allPageRatings.reduce((sum, current) => sum + current, 0) /
+              allPageRatings.length
+            ).toFixed(1),
+          )
+        : 0;
+
     return res.json({
       success: true,
       listings: pageListings,
       page,
+      averageRating: overallAverageRating,
+      ratingsCount: allPageRatings.length,
       counts: {
         adsTotal: ads.length,
         standardTotal: standard.length,
@@ -635,24 +708,50 @@ async function getListing(req, res, next) {
       item.dataValues.catalogue = item.parentAdvert;
     }
 
-    // Get seller rating (average)
-    const ratingData = await Rating.findAll({
-      where: { sellerId: item.sellerId },
-      attributes: [
-        [db.sequelize.fn("AVG", db.sequelize.col("rating")), "averageRating"],
-        [
-          db.sequelize.fn("COUNT", db.sequelize.col("ratingId")),
-          "totalRatings",
-        ],
+    // Get seller ratings (average + full comments)
+    const sellerRatings = await Rating.findAll({
+      where: { listingId: item.listingId },
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["userId", "firstName", "lastName", "profilePicture"],
+        },
       ],
-      raw: true,
+      order: [["createdAt", "DESC"]],
     });
 
+    const ratingValues = sellerRatings
+      .map((r) => Number(r.rating))
+      .filter((val) => Number.isFinite(val));
+
+    const averageRatingNumber =
+      ratingValues.length > 0
+        ? Number(
+            (
+              ratingValues.reduce((sum, current) => sum + current, 0) /
+              ratingValues.length
+            ).toFixed(1),
+          )
+        : 0;
+
     const sellerRating = {
-      averageRating: parseFloat(ratingData[0]?.averageRating || 0).toFixed(1),
-      totalRatings: parseInt(ratingData[0]?.totalRatings || 0, 10),
+      averageRating: averageRatingNumber.toFixed(1),
+      totalRatings: ratingValues.length,
     };
     item.dataValues.sellerRating = sellerRating;
+    item.dataValues.averageRating = averageRatingNumber;
+    item.dataValues.ratings = sellerRatings.map((r) => ({
+      ratingId: r.ratingId,
+      listingId: r.listingId,
+      sellerId: r.sellerId,
+      userId: r.userId,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      user: r.user,
+    }));
 
     // Get seller join date
     if (item.seller) {
@@ -735,6 +834,7 @@ async function handleListingFileUploads(req, sellerEmail, folderName) {
       "uploads",
       "listings",
       sellerEmail,
+      "images",
       folderName,
     );
     fs.mkdirSync(destDir, { recursive: true });
@@ -752,29 +852,12 @@ async function handleListingFileUploads(req, sellerEmail, folderName) {
 }
 
 async function resolveListingUploadFolder(listing) {
-  if (listing.isAdvertisement) {
-    const sellerSub = await SellerSubscription.findOne({
-      where: { listingId: listing.listingId },
-      attributes: ["subscriptionId"],
-    });
-
-    if (!sellerSub) return "adverts";
-
-    const foundSubscription = await Subscription.findByPk(
-      sellerSub.subscriptionId,
-      {
-        attributes: ["name", "subscriptionId"],
-      },
-    );
-
-    const baseName =
-      foundSubscription?.name ||
-      `sub-${foundSubscription?.subscriptionId || sellerSub.subscriptionId}`;
-    return baseName.replace(/[^a-z0-9-_]/gi, "_");
+  if (listing.parentAdvertId) {
+    return "catalogue";
   }
 
-  if (listing.parentAdvertId) {
-    return "catalogue-items";
+  if (listing.isAdvertisement) {
+    return "advert";
   }
 
   return "standard";
@@ -857,6 +940,7 @@ async function createListing(req, res, next) {
             "uploads",
             "listings",
             sellerEmail,
+            "images",
             "standard",
             fileName,
           );
@@ -930,15 +1014,11 @@ async function createAdvertListing(req, res, next) {
         .json({ success: false, message: "Subscription not found" });
     }
 
-    const subscriptionName = (
-      foundSubscription.name || `sub-${subscriptionId}`
-    ).replace(/[^a-z0-9-_]/gi, "_");
-
     // Handle file uploads (catalogue cover images)
     const uploadedFiles = await handleListingFileUploads(
       req,
       sellerEmail,
-      subscriptionName,
+      "advert",
     );
 
     // Advert/catalogue - price from pricingTier or 0, condition n/a, it's a container
@@ -991,7 +1071,8 @@ async function createAdvertListing(req, res, next) {
             "uploads",
             "listings",
             sellerEmail,
-            subscriptionName,
+            "images",
+            "advert",
             fileName,
           );
           if (fs.existsSync(p)) fs.unlinkSync(p);
@@ -1049,7 +1130,7 @@ async function addListingToAdvert(req, res, next) {
     const uploadedFiles = await handleListingFileUploads(
       req,
       sellerEmail,
-      "catalogue-items",
+      "catalogue",
     );
 
     const payload = {
@@ -1097,7 +1178,8 @@ async function addListingToAdvert(req, res, next) {
             "uploads",
             "listings",
             sellerEmail,
-            "catalogue-items",
+            "images",
+            "catalogue",
             fileName,
           );
           if (fs.existsSync(p)) fs.unlinkSync(p);
@@ -1308,6 +1390,7 @@ async function updateListing(req, res, next) {
             "uploads",
             "listings",
             ownerEmail,
+            "images",
             uploadFolder,
             fileName,
           );
