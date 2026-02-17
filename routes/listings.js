@@ -20,7 +20,7 @@ const protect = require("../middleware/protect");
 
 // public or filtered listing endpoint (keeps existing behavior)
 // public or filtered listing endpoint (keeps existing behavior)
-router.get("/", auth, listListings);
+router.get("/", listListings);
 // new separated feeds
 router.get("/ads", auth, listAdListings);
 router.get("/standard", auth, listStandardListings);
