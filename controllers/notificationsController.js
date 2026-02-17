@@ -5,8 +5,7 @@ const { success, fail } = require("../utils/response");
 async function getMyNotifications(req, res, next) {
   try {
     const userId = req.user && req.user.id;
-    if (!userId) return fail(res, "User not authenticated", 401);
-
+    
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
     const pageSize = 20;
     const offset = (page - 1) * pageSize;
