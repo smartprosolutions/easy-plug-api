@@ -1,6 +1,6 @@
 {
   "development": {
-    "username": "easyplug-user",
+    "username": "postgres",
     "password": "@Password123!",
     "database": "easyplug_db",
     "host": "localhost",
@@ -8,7 +8,7 @@
     "port": 5432
   },
   "test": {
-    "username": "root",
+    "username": "easyplug-user",
     "password": null,
     "database": "database_test",
     "host": "127.0.0.1",
