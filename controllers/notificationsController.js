@@ -140,6 +140,16 @@ async function createNotification(userId, type, title, message, actionUrl = null
       actionUrl,
       metadata
     });
+
+    // Emit real-time notification via Socket.IO
+    try {
+      const { getIo } = require("../socket/socketServer");
+      const io = getIo();
+      io.to(`user:${userId}`).emit("new_notification", { notification });
+    } catch (_) {
+      // Socket.IO not yet initialised
+    }
+
     return notification;
   } catch (err) {
     console.error("Error creating notification:", err);
