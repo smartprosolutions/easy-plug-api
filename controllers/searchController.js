@@ -4,7 +4,7 @@ const {
   users: User,
   address: Address,
   ratings: Rating,
-  sellerInfo: SellerInfo
+  sellerInfo: SellerInfo,
 } = db;
 const { Op } = require("sequelize");
 const { fail } = require("../utils/response");
@@ -74,7 +74,7 @@ async function searchListings(req, res, next) {
       isAdvertisement,
       sortBy = "date_desc",
       page = 1,
-      limit = 20
+      limit = 20,
     } = req.query;
 
     // Validate pagination
@@ -93,9 +93,13 @@ async function searchListings(req, res, next) {
         { description: { [Op.iLike]: `%${searchTerm}%` } },
         // Search in keyFeatures array
         db.sequelize.where(
-          db.sequelize.fn('array_to_string', db.sequelize.col('keyFeatures'), ' '),
-          { [Op.iLike]: `%${searchTerm}%` }
-        )
+          db.sequelize.fn(
+            "array_to_string",
+            db.sequelize.col("keyFeatures"),
+            " ",
+          ),
+          { [Op.iLike]: `%${searchTerm}%` },
+        ),
       ];
     }
 
@@ -192,25 +196,26 @@ async function searchListings(req, res, next) {
                 "addressId",
                 "latitude",
                 "longitude",
+                "radius",
                 "streetNumber",
                 "streetName",
                 "suburb",
                 "city",
                 "province",
                 "country",
-                "postalCode"
+                "postalCode",
               ],
               separate: true,
               limit: 1,
-              order: [["createdAt", "DESC"]]
-            }
-          ]
-        }
+              order: [["createdAt", "DESC"]],
+            },
+          ],
+        },
       ],
       order,
       limit: limitNum,
       offset,
-      distinct: true
+      distinct: true,
     });
 
     // If seller rating filter is applied, fetch ratings and filter
@@ -219,33 +224,33 @@ async function searchListings(req, res, next) {
       const minRatingNum = parseFloat(minRating);
 
       // Get seller IDs from listings
-      const sellerIds = [...new Set(listings.map(l => l.sellerId))];
+      const sellerIds = [...new Set(listings.map((l) => l.sellerId))];
 
       // Fetch average ratings for all sellers
       const sellerRatings = await Rating.findAll({
         where: { sellerId: { [Op.in]: sellerIds } },
         attributes: [
           "sellerId",
-          [db.sequelize.fn("AVG", db.sequelize.col("rating")), "avgRating"]
+          [db.sequelize.fn("AVG", db.sequelize.col("rating")), "avgRating"],
         ],
         group: ["sellerId"],
-        raw: true
+        raw: true,
       });
 
       // Create a map of seller ratings
       const ratingMap = {};
-      sellerRatings.forEach(r => {
+      sellerRatings.forEach((r) => {
         ratingMap[r.sellerId] = parseFloat(r.avgRating || 0);
       });
 
       // Filter listings by seller rating
-      filteredListings = listings.filter(listing => {
+      filteredListings = listings.filter((listing) => {
         const sellerRating = ratingMap[listing.sellerId] || 0;
         return sellerRating >= minRatingNum;
       });
 
       // Attach ratings to listings
-      filteredListings.forEach(listing => {
+      filteredListings.forEach((listing) => {
         listing.dataValues.sellerAvgRating = ratingMap[listing.sellerId] || 0;
       });
     }
@@ -256,7 +261,7 @@ async function searchListings(req, res, next) {
       const userLon = parseFloat(longitude);
       const maxDistKm = parseFloat(maxDistance);
 
-      filteredListings = filteredListings.filter(listing => {
+      filteredListings = filteredListings.filter((listing) => {
         if (
           listing.seller &&
           listing.seller.addresses &&
@@ -268,7 +273,7 @@ async function searchListings(req, res, next) {
               userLat,
               userLon,
               parseFloat(sellerAddr.latitude),
-              parseFloat(sellerAddr.longitude)
+              parseFloat(sellerAddr.longitude),
             );
             listing.dataValues.distance = Math.round(distance * 10) / 10; // Round to 1 decimal
             return distance <= maxDistKm;
@@ -279,8 +284,10 @@ async function searchListings(req, res, next) {
 
       // Sort by distance if location filter is used and sortBy is rating
       if (sortBy === "distance") {
-        filteredListings.sort((a, b) =>
-          (a.dataValues.distance || Infinity) - (b.dataValues.distance || Infinity)
+        filteredListings.sort(
+          (a, b) =>
+            (a.dataValues.distance || Infinity) -
+            (b.dataValues.distance || Infinity),
         );
       }
     }
@@ -288,7 +295,9 @@ async function searchListings(req, res, next) {
     // Calculate total pages based on filtered results
     const totalFiltered = filteredListings.length;
     const totalPages = Math.ceil(
-      (minRating || (latitude && longitude && maxDistance) ? totalFiltered : count) / limitNum
+      (minRating || (latitude && longitude && maxDistance)
+        ? totalFiltered
+        : count) / limitNum,
     );
 
     // Log search activity
@@ -302,9 +311,10 @@ async function searchListings(req, res, next) {
           condition,
           type,
           minRating,
-          location: latitude && longitude ? { latitude, longitude, maxDistance } : null
+          location:
+            latitude && longitude ? { latitude, longitude, maxDistance } : null,
         },
-        resultsCount: filteredListings.length
+        resultsCount: filteredListings.length,
       });
     }
 
@@ -314,9 +324,12 @@ async function searchListings(req, res, next) {
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: minRating || (latitude && longitude && maxDistance) ? totalFiltered : count,
+        total:
+          minRating || (latitude && longitude && maxDistance)
+            ? totalFiltered
+            : count,
         totalPages,
-        hasMore: pageNum < totalPages
+        hasMore: pageNum < totalPages,
       },
       filters: {
         q,
@@ -327,13 +340,14 @@ async function searchListings(req, res, next) {
         type,
         status,
         minRating,
-        location: latitude && longitude ? { latitude, longitude, maxDistance } : null,
+        location:
+          latitude && longitude ? { latitude, longitude, maxDistance } : null,
         postedSince,
         dateFrom,
         dateTo,
         isAdvertisement,
-        sortBy
-      }
+        sortBy,
+      },
     });
   } catch (err) {
     console.error("Search error:", err);
@@ -350,69 +364,71 @@ async function getSearchFilters(req, res, next) {
     const categories = await Listing.findAll({
       attributes: [
         "category",
-        [db.sequelize.fn("COUNT", db.sequelize.col("category")), "count"]
+        [db.sequelize.fn("COUNT", db.sequelize.col("category")), "count"],
       ],
       where: { status: "active" },
       group: ["category"],
       order: [[db.sequelize.fn("COUNT", db.sequelize.col("category")), "DESC"]],
-      raw: true
+      raw: true,
     });
 
     // Get unique conditions
     const conditions = await Listing.findAll({
       attributes: [
         "condition",
-        [db.sequelize.fn("COUNT", db.sequelize.col("condition")), "count"]
+        [db.sequelize.fn("COUNT", db.sequelize.col("condition")), "count"],
       ],
       where: { status: "active" },
       group: ["condition"],
-      order: [[db.sequelize.fn("COUNT", db.sequelize.col("condition")), "DESC"]],
-      raw: true
+      order: [
+        [db.sequelize.fn("COUNT", db.sequelize.col("condition")), "DESC"],
+      ],
+      raw: true,
     });
 
     // Get price range
     const priceRange = await Listing.findOne({
       attributes: [
         [db.sequelize.fn("MIN", db.sequelize.col("price")), "minPrice"],
-        [db.sequelize.fn("MAX", db.sequelize.col("price")), "maxPrice"]
+        [db.sequelize.fn("MAX", db.sequelize.col("price")), "maxPrice"],
       ],
       where: { status: "active" },
-      raw: true
+      raw: true,
     });
 
     // Get unique types
     const types = await Listing.findAll({
       attributes: [
         "type",
-        [db.sequelize.fn("COUNT", db.sequelize.col("type")), "count"]
+        [db.sequelize.fn("COUNT", db.sequelize.col("type")), "count"],
       ],
       where: { status: "active" },
       group: ["type"],
       order: [[db.sequelize.fn("COUNT", db.sequelize.col("type")), "DESC"]],
-      raw: true
+      raw: true,
     });
 
     return res.json({
       success: true,
       filters: {
-        categories: categories.map(c => ({
+        categories: categories.map((c) => ({
           value: c.category,
           label: c.category,
-          count: parseInt(c.count, 10)
+          count: parseInt(c.count, 10),
         })),
-        conditions: conditions.map(c => ({
+        conditions: conditions.map((c) => ({
           value: c.condition,
           label: c.condition,
-          count: parseInt(c.count, 10)
+          count: parseInt(c.count, 10),
         })),
-        types: types.map(t => ({
+        types: types.map((t) => ({
           value: t.type,
           label: t.type,
-          count: parseInt(t.count, 10)
+          count: parseInt(t.count, 10),
         })),
         priceRange: {
           min: parseFloat(priceRange?.minPrice || 0),
-          max: parseFloat(priceRange?.maxPrice || 0)
+          max: parseFloat(priceRange?.maxPrice || 0),
         },
         sortOptions: [
           { value: "date_desc", label: "Newest First" },
@@ -421,15 +437,15 @@ async function getSearchFilters(req, res, next) {
           { value: "price_desc", label: "Price: High to Low" },
           { value: "views", label: "Most Viewed" },
           { value: "title", label: "Title (A-Z)" },
-          { value: "distance", label: "Distance (Nearest)" }
+          { value: "distance", label: "Distance (Nearest)" },
         ],
         dateFilters: [
           { value: "1", label: "Last 24 hours" },
           { value: "7", label: "Last 7 days" },
           { value: "30", label: "Last 30 days" },
-          { value: "90", label: "Last 3 months" }
-        ]
-      }
+          { value: "90", label: "Last 3 months" },
+        ],
+      },
     });
   } catch (err) {
     next(err);
@@ -454,20 +470,20 @@ async function getSearchSuggestions(req, res, next) {
       attributes: ["listingId", "title", "price", "category"],
       where: {
         title: { [Op.iLike]: `%${searchTerm}%` },
-        status: "active"
+        status: "active",
       },
       limit: 10,
-      order: [["views", "DESC"]] // Suggest popular items first
+      order: [["views", "DESC"]], // Suggest popular items first
     });
 
     return res.json({
       success: true,
-      suggestions: suggestions.map(s => ({
+      suggestions: suggestions.map((s) => ({
         id: s.listingId,
         title: s.title,
         price: s.price,
-        category: s.category
-      }))
+        category: s.category,
+      })),
     });
   } catch (err) {
     next(err);
@@ -477,5 +493,5 @@ async function getSearchSuggestions(req, res, next) {
 module.exports = {
   searchListings,
   getSearchFilters,
-  getSearchSuggestions
+  getSearchSuggestions,
 };
