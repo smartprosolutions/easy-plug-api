@@ -58,6 +58,11 @@ async function listChats(req, res, next) {
         },
         {
           model: User,
+          as: "buyer",
+          attributes: { exclude: ["passwordHash"] },
+        },
+        {
+          model: User,
           as: "seller",
           attributes: { exclude: ["passwordHash"] },
         },

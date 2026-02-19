@@ -1,17 +1,19 @@
 {
   "info": {
     "name": "EasyPlug API - Complete Collection",
-    "description": "Complete Postman collection for EasyPlug API with automatic token and ID management",
+    "description": "Complete Postman collection for EasyPlug API with automatic token and ID management.\n\n## Socket.IO Real-time Testing\nThis collection includes a dedicated **🔌 Socket.IO - Real-time** folder.\nTo test Socket.IO events in Postman:\n1. Open Postman Desktop App (v10+)\n2. Click **New → Socket.IO** to create a Socket.IO request\n3. Use server URL: `http://localhost:8000`\n4. Under **Connection > Auth**, add key `token` with value `{{authToken}}`\n5. Add listeners for `new_message` and `new_notification`\n6. Emit `join_chat` with the chatId to subscribe to chat events\n\nSee the **🔌 Socket.IO - Real-time** folder for full event documentation.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_postman_id": "easyplug-api-v2"
+    "_postman_id": "easyplug-api-v3"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8000/api/v1", "type": "string" },
+    { "key": "socketUrl", "value": "http://localhost:8000", "type": "string", "description": "Socket.IO server URL (without /api/v1 prefix)" },
     { "key": "authToken", "value": "", "type": "string" },
     { "key": "userId", "value": "", "type": "string" },
     { "key": "sellerId", "value": "", "type": "string" },
     { "key": "listingId", "value": "", "type": "string" },
     { "key": "chatId", "value": "", "type": "string" },
+    { "key": "messageId", "value": "", "type": "string" },
     { "key": "notificationId", "value": "", "type": "string" },
     { "key": "transactionId", "value": "", "type": "string" }
   ],
@@ -570,7 +572,7 @@
     },
     {
       "name": "🔔 Notifications",
-      "description": "User notifications system",
+      "description": "User notifications system.\n\n**Socket.IO Integration:**\nEvery new notification is also pushed in real-time via Socket.IO:\n- Event: `new_notification`\n- Room: `user:{userId}` (joined automatically on connection)\n- Payload: `{ notification: { notificationId, userId, type, title, message, actionUrl, metadata, isRead, createdAt } }`\n\nNotification types: `message`, `transaction`, `listing`, `account`, `system`",
       "item": [
         {
           "name": "Get My Notifications",
@@ -581,6 +583,12 @@
                 "exec": [
                   "if (pm.response.code === 200) {",
                   "    var jsonData = pm.response.json();",
+                  "    pm.test('Notifications response valid', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.notifications).to.be.an('array');",
+                  "        pm.expect(jsonData).to.have.property('total');",
+                  "        pm.expect(jsonData).to.have.property('totalPages');",
+                  "    });",
                   "    if (jsonData.notifications && jsonData.notifications.length > 0) {",
                   "        pm.collectionVariables.set('notificationId', jsonData.notifications[0].notificationId);",
                   "        console.log('✅ Notification ID saved:', jsonData.notifications[0].notificationId);",
@@ -605,12 +613,32 @@
                 { "key": "unreadOnly", "value": "false" }
               ]
             },
-            "description": "Get all notifications for user (20 per page)"
+            "description": "Get all notifications for user (20 per page). Notifications are also delivered in real-time via Socket.IO `new_notification` event on the `user:{userId}` room."
           },
           "response": []
         },
         {
           "name": "Get Unread Notifications Only",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Unread notifications returned', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.notifications).to.be.an('array');",
+                  "        jsonData.notifications.forEach(function(n) {",
+                  "            pm.expect(n.isRead).to.be.false;",
+                  "        });",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -631,6 +659,25 @@
         },
         {
           "name": "Get Unread Count",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Unread count returned', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.unreadCount).to.be.a('number');",
+                  "        pm.expect(jsonData.unreadCount).to.be.at.least(0);",
+                  "    });",
+                  "    console.log('📊 Unread notification count:', jsonData.unreadCount);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -641,12 +688,30 @@
               "host": ["{{baseUrl}}"],
               "path": ["notifications", "unread-count"]
             },
-            "description": "Get count of unread notifications (for badge display)"
+            "description": "Get count of unread notifications (for badge display). The count increases in real-time when new `new_notification` Socket.IO events are received."
           },
           "response": []
         },
         {
           "name": "Mark Notification as Read",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Notification marked as read', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.notification.isRead).to.be.true;",
+                  "        pm.expect(jsonData.notification.readAt).to.not.be.null;",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "PUT",
             "header": [
@@ -657,12 +722,29 @@
               "host": ["{{baseUrl}}"],
               "path": ["notifications", "{{notificationId}}", "read"]
             },
-            "description": "Mark a single notification as read"
+            "description": "Mark a single notification as read. Sets `isRead: true` and `readAt` timestamp."
           },
           "response": []
         },
         {
           "name": "Mark All as Read",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('All notifications marked as read', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.message).to.include('read');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "PUT",
             "header": [
@@ -679,6 +761,22 @@
         },
         {
           "name": "Delete Notification",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Notification deleted', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "DELETE",
             "header": [
@@ -697,7 +795,7 @@
     },
     {
       "name": "💬 Chats & Messages",
-      "description": "Chat system - one chat per listing/buyer/seller combination",
+      "description": "Chat system - one chat per listing/buyer/seller combination.\n\n**Socket.IO Integration:**\n- When `POST /chat-messages` is called, the server emits:\n  1. `new_message` → to `chat:{chatId}` room (all participants)\n  2. `new_notification` → to `user:{receiverId}` room (receiver only)\n- Clients must join the chat room first by emitting `join_chat` with the chatId\n- See the **🔌 Socket.IO** folder for event details and connection setup",
       "item": [
         {
           "name": "Create or Get Chat",
@@ -706,11 +804,17 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "if (pm.response.code === 200) {",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
                   "    var jsonData = pm.response.json();",
+                  "    pm.test('Chat created or retrieved', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.chat).to.be.an('object');",
+                  "        pm.expect(jsonData.chat).to.have.property('chatId');",
+                  "    });",
                   "    if (jsonData.chat && jsonData.chat.chatId) {",
                   "        pm.collectionVariables.set('chatId', jsonData.chat.chatId);",
                   "        console.log('✅ Chat ID saved:', jsonData.chat.chatId);",
+                  "        console.log('ℹ️  Join this chat room via Socket.IO: emit join_chat with chatId:', jsonData.chat.chatId);",
                   "    }",
                   "}"
                 ],
@@ -733,12 +837,35 @@
               "host": ["{{baseUrl}}"],
               "path": ["chats"]
             },
-            "description": "Create a new chat or get existing chat for this listing/seller combination"
+            "description": "Create a new chat or get existing chat for this listing/seller combination. After getting the chatId, emit `join_chat` via Socket.IO to receive real-time messages."
           },
           "response": []
         },
         {
           "name": "List My Chats",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Chats list returned', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.chats).to.be.an('array');",
+                  "    });",
+                  "    if (jsonData.chats && jsonData.chats.length > 0) {",
+                  "        var firstChat = jsonData.chats[0];",
+                  "        console.log('📋 First chat ID:', firstChat.chatId);",
+                  "        console.log('📋 Last message preview:', firstChat.lastMessage ? firstChat.lastMessage.message : 'No messages');",
+                  "        console.log('📋 Unread count:', firstChat.unreadCount || 0);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -749,12 +876,34 @@
               "host": ["{{baseUrl}}"],
               "path": ["chats"]
             },
-            "description": "Get all chats for authenticated user (as buyer or seller)"
+            "description": "Get all chats for authenticated user (as buyer or seller). Each chat includes `lastMessage` and `unreadCount`."
           },
           "response": []
         },
         {
           "name": "Get Chat with Messages",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Chat with messages returned', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.chat).to.be.an('object');",
+                  "    });",
+                  "    if (jsonData.chat && jsonData.chat.messages && jsonData.chat.messages.length > 0) {",
+                  "        var firstMsg = jsonData.chat.messages[0];",
+                  "        pm.collectionVariables.set('messageId', firstMsg.messageId);",
+                  "        console.log('✅ Message ID saved:', firstMsg.messageId);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -765,12 +914,41 @@
               "host": ["{{baseUrl}}"],
               "path": ["chats", "{{chatId}}"]
             },
-            "description": "Get chat details with all messages"
+            "description": "Get chat details with all messages. Messages are ordered by `createdAt ASC`."
           },
           "response": []
         },
         {
           "name": "Send Message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Message sent successfully', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.message).to.be.an('object');",
+                  "        pm.expect(jsonData.message).to.have.property('messageId');",
+                  "        pm.expect(jsonData.message).to.have.property('chatId');",
+                  "        pm.expect(jsonData.message).to.have.property('senderId');",
+                  "        pm.expect(jsonData.message).to.have.property('message');",
+                  "        pm.expect(jsonData.message.isRead).to.be.false;",
+                  "    });",
+                  "    if (jsonData.message && jsonData.message.messageId) {",
+                  "        pm.collectionVariables.set('messageId', jsonData.message.messageId);",
+                  "        console.log('✅ Message ID saved:', jsonData.message.messageId);",
+                  "    }",
+                  "    console.log('🔌 Socket.IO events triggered:');",
+                  "    console.log('   → new_message emitted to room chat:' + pm.collectionVariables.get('chatId'));",
+                  "    console.log('   → new_notification emitted to room user:' + pm.collectionVariables.get('sellerId'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -786,7 +964,564 @@
               "host": ["{{baseUrl}}"],
               "path": ["chat-messages"]
             },
-            "description": "Send a message in a chat"
+            "description": "Send a message in a chat.\n\n**Triggers two Socket.IO events:**\n1. `new_message` → emitted to `chat:{chatId}` room\n   - Payload: `{ message: { messageId, chatId, senderId, receiverId, message, isRead, createdAt } }`\n2. `new_notification` → emitted to `user:{receiverId}` room\n   - Payload: `{ notification: { notificationId, type: 'message', title, message, actionUrl, metadata } }`\n\n**Required fields:** `chatId`, `message`\n**Optional:** `receiverId` (needed for notification)"
+          },
+          "response": []
+        },
+        {
+          "name": "List Chat Messages (Paginated)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Messages list returned', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.messages).to.be.an('array');",
+                  "    });",
+                  "    if (jsonData.messages && jsonData.messages.length > 0) {",
+                  "        var lastMsg = jsonData.messages[jsonData.messages.length - 1];",
+                  "        pm.collectionVariables.set('messageId', lastMsg.messageId);",
+                  "        console.log('✅ Latest message ID saved:', lastMsg.messageId);",
+                  "        console.log('📊 Total messages loaded:', jsonData.messages.length);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chat-messages/{{chatId}}?limit=100&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["chat-messages", "{{chatId}}"],
+              "query": [
+                { "key": "limit", "value": "100", "description": "Number of messages to return (default: 100)" },
+                { "key": "offset", "value": "0", "description": "Number of messages to skip for pagination" }
+              ]
+            },
+            "description": "Retrieve paginated messages for a chat, ordered by `createdAt ASC`.\n\n**Query params:**\n- `limit` - messages per page (default: 100)\n- `offset` - skip N messages (default: 0)"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Chat as Read",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Chat marked as read', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData).to.have.property('updatedCount');",
+                  "    });",
+                  "    console.log('✅ Messages marked as read:', jsonData.updatedCount);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chat-messages/chat/{{chatId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["chat-messages", "chat", "{{chatId}}", "read"]
+            },
+            "description": "Mark all unread messages in a chat as read for the authenticated user.\n\n- Only marks messages sent **by others** (not the current user's own messages)\n- Returns `updatedCount` with how many messages were updated\n- User must be a participant (buyer or seller) in the chat"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Single Message as Read",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Message marked as read', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.message).to.be.an('object');",
+                  "        pm.expect(jsonData.message.isRead).to.be.true;",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chat-messages/{{messageId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["chat-messages", "{{messageId}}", "read"]
+            },
+            "description": "Mark a specific message as read.\n\n- Returns `403` if you try to mark your own sent message as read\n- Returns `403` if the message was not addressed to you"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔌 Socket.IO - Real-time",
+      "description": "# Socket.IO Real-time Testing Guide\n\nThe EasyPlug server runs Socket.IO v4 on `http://localhost:8000` (no /api/v1 prefix).\n\n## Connection Setup in Postman\n\n1. Open **Postman Desktop App v10+**\n2. Click **New** → **Socket.IO**\n3. Enter URL: `http://localhost:8000`\n4. Under the **Connection** tab → **Handshake** → **Auth**:\n   - Add key: `token`, value: `<paste your JWT here>` (from `authToken` variable)\n5. Click **Connect**\n\nOn connection, the server automatically joins you to room `user:{yourUserId}` for notifications.\n\n## Events Reference\n\n### Client → Server (Emit)\n| Event | Data | Description |\n|---|---|---|\n| `join_chat` | `chatId` (number/string) | Join a chat room to receive messages |\n| `leave_chat` | `chatId` (number/string) | Leave a chat room |\n\n### Server → Client (Listen)\n| Event | Payload | Description |\n|---|---|---|\n| `new_message` | `{ message: {...} }` | New chat message in a joined room |\n| `new_notification` | `{ notification: {...} }` | New notification for current user |\n\n## Test Workflow\n\n1. **Login** via REST → get `authToken`\n2. **Connect** Socket.IO with `token: <authToken>` in handshake auth\n3. **Listen** for `new_notification` and `new_message`\n4. **Create a chat** via REST → note `chatId`\n5. **Emit** `join_chat` with the `chatId`\n6. **Send a message** via REST (`POST /chat-messages`)\n7. **Verify** `new_message` fires in the chat room\n8. **Verify** `new_notification` fires on the receiver's user room\n\nSee child requests in this folder for per-event test scripts and REST-side verification.",
+      "item": [
+        {
+          "name": "[GUIDE] Socket.IO Connection Setup",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Socket.IO Connection Reference",
+                  "var token = pm.collectionVariables.get('authToken');",
+                  "var socketUrl = pm.collectionVariables.get('socketUrl') || 'http://localhost:8000';",
+                  "",
+                  "console.log('=== Socket.IO Connection Guide ===');",
+                  "console.log('Server URL:', socketUrl);",
+                  "console.log('Auth token set:', token ? 'YES ✅' : 'NO ❌ (run Login first)');",
+                  "",
+                  "console.log('');",
+                  "console.log('Handshake Auth config:');",
+                  "console.log(JSON.stringify({ token: token }, null, 2));",
+                  "",
+                  "console.log('');",
+                  "console.log('Events to EMIT after connecting:');",
+                  "console.log('  join_chat  →', pm.collectionVariables.get('chatId') || '<chatId>');",
+                  "",
+                  "console.log('');",
+                  "console.log('Events to LISTEN for:');",
+                  "console.log('  new_message       → triggered by POST /chat-messages');",
+                  "console.log('  new_notification  → triggered by POST /chat-messages (receiver side)');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "This request is a **setup verification** step, not a Socket.IO request itself.\n\nRun this to confirm your `authToken` is valid before opening a Socket.IO connection in Postman.\n\n## How to open a Socket.IO connection in Postman:\n\n1. Click **New** → **Socket.IO** in the Postman sidebar\n2. Server URL: `{{socketUrl}}` → `http://localhost:8000`\n3. **Handshake > Auth** tab: add `token = <your JWT token>`\n4. Click **Connect**\n\n## Expected connection result:\n- Status: `connected`\n- Server auto-joins you to room `user:{yourUserId}`\n- You will start receiving `new_notification` events"
+          },
+          "response": []
+        },
+        {
+          "name": "[EVENT] join_chat - Subscribe to Chat Room",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var chatId = pm.collectionVariables.get('chatId');",
+                  "",
+                  "console.log('=== join_chat Event Guide ===');",
+                  "console.log('');",
+                  "console.log('In your Socket.IO connection, emit:');",
+                  "console.log('  Event name: join_chat');",
+                  "console.log('  Data:', chatId || '<chatId>');",
+                  "console.log('');",
+                  "console.log('After joining, you will receive:');",
+                  "console.log('  new_message events whenever POST /chat-messages is called');",
+                  "console.log('  for chatId:', chatId || '<chatId>');",
+                  "console.log('');",
+                  "console.log('Socket.IO client code example:');",
+                  "console.log('  socket.emit(\"join_chat\", ' + (chatId || '1') + ');');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Verify the chat exists and user is a participant",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Chat exists and user is a participant (safe to join room)', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.chat).to.be.an('object');",
+                  "        pm.expect(jsonData.chat.chatId).to.exist;",
+                  "    });",
+                  "    var chatId = jsonData.chat.chatId;",
+                  "    console.log('✅ Chat verified. Now emit join_chat with chatId:', chatId);",
+                  "    console.log('');",
+                  "    console.log('Socket.IO client (browser/Node.js):');",
+                  "    console.log('  socket.emit(\"join_chat\", ' + chatId + ');');",
+                  "    console.log('');",
+                  "    console.log('Postman Socket.IO tab:');",
+                  "    console.log('  Event name: join_chat');",
+                  "    console.log('  Message:    ' + chatId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chats/{{chatId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chats", "{{chatId}}"]
+            },
+            "description": "**REST Verification Step** - Confirms the chat exists before emitting `join_chat`.\n\n## Socket.IO: Emit `join_chat`\n\nAfter verifying the chat via this REST call, go to your Socket.IO connection in Postman and:\n\n1. In the **Messages** tab, select the **Event name** field\n2. Enter event name: `join_chat`\n3. Enter message (the chatId): `{{chatId}}`\n4. Click **Send**\n\n## Server-side logic:\n```javascript\nsocket.on('join_chat', (chatId) => {\n  if (chatId) socket.join(`chat:${chatId}`);\n});\n```\n\nAfter joining, any `POST /chat-messages` to this chatId will broadcast a `new_message` event to this room."
+          },
+          "response": []
+        },
+        {
+          "name": "[EVENT] leave_chat - Unsubscribe from Chat Room",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var chatId = pm.collectionVariables.get('chatId');",
+                  "",
+                  "console.log('=== leave_chat Event Guide ===');",
+                  "console.log('');",
+                  "console.log('In your Socket.IO connection, emit:');",
+                  "console.log('  Event name: leave_chat');",
+                  "console.log('  Data:', chatId || '<chatId>');",
+                  "console.log('');",
+                  "console.log('After leaving, you will NO LONGER receive:');",
+                  "console.log('  new_message events for chatId:', chatId || '<chatId>');",
+                  "console.log('  (but you still receive new_notification on your user room)');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chats",
+              "host": ["{{baseUrl}}"],
+              "path": ["chats"]
+            },
+            "description": "**REST Verification Step** - Lists your chats to reference chatIds for leaving rooms.\n\n## Socket.IO: Emit `leave_chat`\n\n1. In your Socket.IO connection's **Messages** tab\n2. Event name: `leave_chat`\n3. Message: `{{chatId}}`\n4. Click **Send**\n\n## Server-side logic:\n```javascript\nsocket.on('leave_chat', (chatId) => {\n  if (chatId) socket.leave(`chat:${chatId}`);\n});\n```\n\nNote: You will still receive `new_notification` events on your personal `user:{userId}` room even after leaving a chat room."
+          },
+          "response": []
+        },
+        {
+          "name": "[EVENT] new_message - Trigger & Verify",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var chatId = pm.collectionVariables.get('chatId');",
+                  "var sellerId = pm.collectionVariables.get('sellerId');",
+                  "",
+                  "console.log('=== new_message Event Trigger ===');",
+                  "console.log('');",
+                  "console.log('Pre-conditions for receiving new_message:');",
+                  "console.log('  1. Socket.IO connected with valid JWT');",
+                  "console.log('  2. Emitted join_chat with chatId:', chatId || '<chatId>');",
+                  "console.log('');",
+                  "console.log('This REST request sends a message which triggers:');",
+                  "console.log('  → new_message on room chat:' + (chatId || '<chatId>'));",
+                  "console.log('  → new_notification on room user:' + (sellerId || '<sellerId>'));",
+                  "console.log('');",
+                  "console.log('Expected new_message payload:');",
+                  "console.log(JSON.stringify({",
+                  "  message: {",
+                  "    messageId: '<auto>',",
+                  "    chatId: chatId || '<chatId>',",
+                  "    senderId: '<your userId>',",
+                  "    receiverId: sellerId || '<sellerId>',",
+                  "    message: '<message text>',",
+                  "    isRead: false,",
+                  "    createdAt: '<timestamp>'",
+                  "  }",
+                  "}, null, 2));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Message sent - new_message Socket.IO event triggered', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.message).to.be.an('object');",
+                  "        pm.expect(jsonData.message.messageId).to.exist;",
+                  "        pm.expect(jsonData.message.isRead).to.be.false;",
+                  "    });",
+                  "    pm.test('Message has required fields', function () {",
+                  "        var msg = jsonData.message;",
+                  "        pm.expect(msg).to.have.property('chatId');",
+                  "        pm.expect(msg).to.have.property('senderId');",
+                  "        pm.expect(msg).to.have.property('message');",
+                  "    });",
+                  "    if (jsonData.message.messageId) {",
+                  "        pm.collectionVariables.set('messageId', jsonData.message.messageId);",
+                  "        console.log('✅ Message ID saved:', jsonData.message.messageId);",
+                  "    }",
+                  "    console.log('');",
+                  "    console.log('🔌 Socket.IO events fired on server:');",
+                  "    console.log('   ✅ new_message → room chat:' + jsonData.message.chatId);",
+                  "    console.log('   ✅ new_notification → room user:' + jsonData.message.receiverId);",
+                  "    console.log('');",
+                  "    console.log('Check your Socket.IO listener for new_message event!');",
+                  "    console.log('Full new_message payload:', JSON.stringify({ message: jsonData.message }, null, 2));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chatId\": \"{{chatId}}\",\n  \"receiverId\": \"{{sellerId}}\",\n  \"message\": \"[Socket.IO Test] Hello! Testing real-time messaging. Is this item still available?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chat-messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["chat-messages"]
+            },
+            "description": "**Trigger the `new_message` Socket.IO event** by sending a REST message.\n\n## Setup before running:\n1. Open a Socket.IO connection in Postman (see [GUIDE] request)\n2. Add listener for `new_message`\n3. Emit `join_chat` with `{{chatId}}`\n4. Run this request\n\n## Expected Socket.IO `new_message` payload:\n```json\n{\n  \"message\": {\n    \"messageId\": 42,\n    \"chatId\": 1,\n    \"senderId\": \"<your-user-id>\",\n    \"receiverId\": \"<seller-user-id>\",\n    \"message\": \"Hello!\",\n    \"isRead\": false,\n    \"createdAt\": \"2025-01-01T00:00:00.000Z\"\n  }\n}\n```\n\n## Room targeted:\n`chat:{chatId}` — all clients who emitted `join_chat` with this chatId receive the event."
+          },
+          "response": []
+        },
+        {
+          "name": "[EVENT] new_notification - Trigger & Verify",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var userId = pm.collectionVariables.get('userId');",
+                  "var sellerId = pm.collectionVariables.get('sellerId');",
+                  "",
+                  "console.log('=== new_notification Event Trigger ===');",
+                  "console.log('');",
+                  "console.log('The receiver must be connected to Socket.IO to get this event.');",
+                  "console.log('Receiver user room: user:' + (sellerId || '<sellerId>'));",
+                  "console.log('');",
+                  "console.log('new_notification is emitted when:');",
+                  "console.log('  1. POST /chat-messages with receiverId');",
+                  "console.log('  2. Any internal createNotification() call');",
+                  "console.log('');",
+                  "console.log('Expected new_notification payload:');",
+                  "console.log(JSON.stringify({",
+                  "  notification: {",
+                  "    notificationId: '<uuid>',",
+                  "    userId: sellerId || '<sellerId>',",
+                  "    type: 'message',",
+                  "    title: 'New Message',",
+                  "    message: '<sender> sent you a message about \"<listing title>\"',",
+                  "    actionUrl: '/chats/<chatId>',",
+                  "    metadata: {",
+                  "      chatId: '<chatId>',",
+                  "      senderId: userId || '<senderId>',",
+                  "      senderName: '<First Last>',",
+                  "      listingId: '<listingId>',",
+                  "      listingTitle: '<title>',",
+                  "      messagePreview: '<first 100 chars>'",
+                  "    },",
+                  "    isRead: false,",
+                  "    createdAt: '<timestamp>'",
+                  "  }",
+                  "}, null, 2));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// After sending a message, verify the notification was created in DB",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Notifications list retrieved', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData.notifications).to.be.an('array');",
+                  "    });",
+                  "    if (jsonData.notifications.length > 0) {",
+                  "        var latest = jsonData.notifications[0];",
+                  "        pm.test('Latest notification is a message notification', function () {",
+                  "            pm.expect(latest.type).to.equal('message');",
+                  "            pm.expect(latest.isRead).to.be.false;",
+                  "            pm.expect(latest.metadata).to.be.an('object');",
+                  "            pm.expect(latest.metadata).to.have.property('chatId');",
+                  "        });",
+                  "        pm.collectionVariables.set('notificationId', latest.notificationId);",
+                  "        console.log('✅ Latest notification ID saved:', latest.notificationId);",
+                  "        console.log('📋 Notification type:', latest.type);",
+                  "        console.log('📋 Notification title:', latest.title);",
+                  "        console.log('📋 Action URL:', latest.actionUrl);",
+                  "        console.log('');",
+                  "        console.log('This notification was ALSO sent via Socket.IO:');",
+                  "        console.log('  Event: new_notification');",
+                  "        console.log('  Room:  user:' + latest.userId);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?page=1&unreadOnly=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "unreadOnly", "value": "true" }
+              ]
+            },
+            "description": "**Verify `new_notification` was created** after sending a message.\n\nRun this as the **receiver's user** (log in as the seller if the buyer sent the message) to confirm the notification exists in the DB — which also means the `new_notification` Socket.IO event was emitted.\n\n## Socket.IO `new_notification` setup:\n1. Connect to Socket.IO with your JWT (no need to join any room — the server auto-joins `user:{yourUserId}`)\n2. Add listener for `new_notification`\n3. The event fires automatically whenever someone sends you a message or another system event occurs\n\n## Expected `new_notification` payload:\n```json\n{\n  \"notification\": {\n    \"notificationId\": \"<uuid>\",\n    \"userId\": \"<receiver-id>\",\n    \"type\": \"message\",\n    \"title\": \"New Message\",\n    \"message\": \"John Doe sent you a message about 'iPhone 15 Pro Max'\",\n    \"actionUrl\": \"/chats/1\",\n    \"metadata\": {\n      \"chatId\": 1,\n      \"senderId\": \"<sender-id>\",\n      \"senderName\": \"John Doe\",\n      \"listingId\": \"<listing-id>\",\n      \"listingTitle\": \"iPhone 15 Pro Max\",\n      \"messagePreview\": \"Hi, is this item still available?\"\n    },\n    \"isRead\": false,\n    \"createdAt\": \"2025-01-01T00:00:00.000Z\"\n  }\n}\n```\n\n## Room targeted:\n`user:{receiverId}` — only the receiver gets this event."
+          },
+          "response": []
+        },
+        {
+          "name": "[FLOW] Full Real-time Chat Test",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Full Socket.IO + REST Integration Test Checklist",
+                  "console.log('============================================');",
+                  "console.log('  FULL REAL-TIME CHAT TEST CHECKLIST');",
+                  "console.log('============================================');",
+                  "console.log('');",
+                  "console.log('STEP 1: Setup (REST)');",
+                  "console.log('  ✔ Run Login → authToken set');",
+                  "console.log('  ✔ Run Create Listing → listingId set');",
+                  "console.log('  ✔ Run Create or Get Chat → chatId set');",
+                  "console.log('');",
+                  "console.log('STEP 2: Socket.IO Connection (Postman Socket.IO tab)');",
+                  "console.log('  URL:   http://localhost:8000');",
+                  "console.log('  Auth:  token = ' + (pm.collectionVariables.get('authToken') || '<paste token>'));",
+                  "console.log('  Click: Connect');",
+                  "console.log('');",
+                  "console.log('STEP 3: Add Listeners (before sending messages)');",
+                  "console.log('  Listen for: new_message');",
+                  "console.log('  Listen for: new_notification');",
+                  "console.log('');",
+                  "console.log('STEP 4: Join Chat Room');",
+                  "console.log('  Emit: join_chat');",
+                  "console.log('  Data: ' + (pm.collectionVariables.get('chatId') || '<chatId>'));",
+                  "console.log('');",
+                  "console.log('STEP 5: Send Message (REST)');",
+                  "console.log('  POST /chat-messages');",
+                  "console.log('  chatId:', pm.collectionVariables.get('chatId') || '<chatId>');",
+                  "console.log('  receiverId:', pm.collectionVariables.get('sellerId') || '<sellerId>');",
+                  "console.log('');",
+                  "console.log('STEP 6: Verify Real-time Events');",
+                  "console.log('  ✔ new_message received on chat:' + pm.collectionVariables.get('chatId'));",
+                  "console.log('  ✔ new_notification received on user:' + pm.collectionVariables.get('sellerId'));",
+                  "console.log('');",
+                  "console.log('STEP 7: Verify REST Side Effects');",
+                  "console.log('  GET /notifications → should show new message notification');",
+                  "console.log('  GET /notifications/unread-count → should be > 0');",
+                  "console.log('  GET /chat-messages/:chatId → should include new message');",
+                  "console.log('============================================');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Final verification: check all variables are set for a complete test",
+                  "pm.test('authToken is set', function () {",
+                  "    pm.expect(pm.collectionVariables.get('authToken')).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('userId is set', function () {",
+                  "    pm.expect(pm.collectionVariables.get('userId')).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('chatId is set', function () {",
+                  "    pm.expect(pm.collectionVariables.get('chatId')).to.not.be.empty;",
+                  "});",
+                  "pm.test('messageId is set (message was sent)', function () {",
+                  "    pm.expect(pm.collectionVariables.get('messageId')).to.not.be.empty;",
+                  "});",
+                  "pm.test('notificationId is set (notification was created)', function () {",
+                  "    pm.expect(pm.collectionVariables.get('notificationId')).to.not.be.empty;",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Unread notification count > 0 after sending message', function () {",
+                  "        pm.expect(jsonData.unreadCount).to.be.at.least(1);",
+                  "    });",
+                  "    console.log('');",
+                  "    console.log('🎉 FULL REAL-TIME TEST SUMMARY');",
+                  "    console.log('  chatId:         ', pm.collectionVariables.get('chatId'));",
+                  "    console.log('  messageId:      ', pm.collectionVariables.get('messageId'));",
+                  "    console.log('  notificationId: ', pm.collectionVariables.get('notificationId'));",
+                  "    console.log('  Unread count:   ', jsonData.unreadCount);",
+                  "    console.log('');",
+                  "    console.log('If Socket.IO was connected, you should have received:');",
+                  "    console.log('  → new_message on chat:' + pm.collectionVariables.get('chatId'));",
+                  "    console.log('  → new_notification on user:' + pm.collectionVariables.get('sellerId'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/unread-count",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "unread-count"]
+            },
+            "description": "**Final step in the full real-time chat test flow.**\n\nRun this after completing the Socket.IO setup and sending a message. It verifies that:\n1. The unread notification count has increased (confirming REST + Socket.IO DB write worked)\n2. All collection variables are properly set\n\n## Complete Test Execution Order:\n1. 🔐 Authentication → **Login** (sets `authToken`, `userId`)\n2. 📦 Listings → **Create Listing** (sets `listingId`)\n3. 💬 Chats → **Create or Get Chat** (sets `chatId`)\n4. 🔌 Socket.IO → **[GUIDE] Socket.IO Connection Setup** (read instructions, connect manually)\n5. 🔌 Socket.IO → **[EVENT] join_chat** (read instructions, emit manually)\n6. 🔌 Socket.IO → **[EVENT] new_message - Trigger & Verify** (sends REST message, triggers socket events)\n7. 🔌 Socket.IO → **[EVENT] new_notification - Trigger & Verify** (confirms notification in DB)\n8. 🔌 Socket.IO → **[FLOW] Full Real-time Chat Test** ← **You are here** (final assertion)"
           },
           "response": []
         }

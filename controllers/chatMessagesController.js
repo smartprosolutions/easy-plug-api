@@ -38,8 +38,9 @@ async function sendMessage(req, res, next) {
     });
 
     // Create notification for receiver
+    let notification = null;
     if (receiverId && sender && listing) {
-      await createNotification(
+      notification = await createNotification(
         receiverId,
         "message",
         "New Message",
@@ -54,6 +55,18 @@ async function sendMessage(req, res, next) {
           messagePreview: message.substring(0, 100),
         },
       );
+    }
+
+    // Emit real-time events via Socket.IO
+    try {
+      const { getIo } = require("../socket/socketServer");
+      const io = getIo();
+      io.to(`chat:${chatId}`).emit("new_message", { message: created });
+      if (notification && receiverId) {
+        io.to(`user:${receiverId}`).emit("new_notification", { notification });
+      }
+    } catch (_) {
+      // Socket.IO not available; REST response already sent
     }
 
     return success(res, { message: created }, 201);
