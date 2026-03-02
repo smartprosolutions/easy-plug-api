@@ -4,7 +4,7 @@ const {
   users: User,
   address: Address,
   ratings: Rating,
-  sellerInfo: SellerInfo,
+  activityLog: ActivityLog,
 } = db;
 const { Op } = require("sequelize");
 const { fail } = require("../utils/response");
@@ -490,8 +490,138 @@ async function getSearchSuggestions(req, res, next) {
   }
 }
 
+async function saveSearch(req, res, next) {
+  try {
+    const userId = req.user && req.user.id;
+    if (!userId) return fail(res, "User not authenticated", 401);
+
+    const { name, filters } = req.body || {};
+
+    let normalizedFilters = filters;
+    if (!normalizedFilters || typeof normalizedFilters !== "object") {
+      normalizedFilters = {};
+      for (const [key, value] of Object.entries(req.body || {})) {
+        if (key !== "name") normalizedFilters[key] = value;
+      }
+    }
+
+    if (!normalizedFilters || Object.keys(normalizedFilters).length === 0) {
+      return fail(res, "filters are required", 400);
+    }
+
+    const saved = await ActivityLog.create({
+      userId,
+      action: "saved_search",
+      entityType: "search",
+      metadata: {
+        name: name || null,
+        filters: normalizedFilters,
+      },
+      ipAddress:
+        req.headers["x-forwarded-for"]?.split(",")[0] ||
+        req.connection.remoteAddress ||
+        req.socket.remoteAddress ||
+        null,
+      userAgent: req.headers["user-agent"] || null,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Search saved successfully",
+      savedSearch: {
+        savedSearchId: saved.activityId,
+        userId: saved.userId,
+        name: saved.metadata?.name || null,
+        filters: saved.metadata?.filters || {},
+        createdAt: saved.createdAt,
+        updatedAt: saved.updatedAt,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listSavedSearches(req, res, next) {
+  try {
+    const userId = req.user && req.user.id;
+    if (!userId) return fail(res, "User not authenticated", 401);
+
+    const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
+    const pageSize = Math.min(
+      Math.max(parseInt(req.query.pageSize || "20", 10) || 20, 1),
+      100,
+    );
+    const offset = (page - 1) * pageSize;
+
+    const { rows, count } = await ActivityLog.findAndCountAll({
+      where: {
+        userId,
+        action: "saved_search",
+        entityType: "search",
+      },
+      order: [["createdAt", "DESC"]],
+      limit: pageSize,
+      offset,
+    });
+
+    const savedSearches = rows.map((row) => ({
+      savedSearchId: row.activityId,
+      userId: row.userId,
+      name: row.metadata?.name || null,
+      filters: row.metadata?.filters || {},
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
+
+    return res.json({
+      success: true,
+      savedSearches,
+      page,
+      pageSize,
+      total: count,
+      totalPages: Math.ceil(count / pageSize),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteSavedSearch(req, res, next) {
+  try {
+    const userId = req.user && req.user.id;
+    if (!userId) return fail(res, "User not authenticated", 401);
+
+    const { savedSearchId } = req.params;
+    if (!savedSearchId) return fail(res, "savedSearchId is required", 400);
+
+    const deleted = await ActivityLog.destroy({
+      where: {
+        activityId: savedSearchId,
+        userId,
+        action: "saved_search",
+        entityType: "search",
+      },
+    });
+
+    if (deleted === 0) {
+      return fail(res, "Saved search not found", 404);
+    }
+
+    return res.json({
+      success: true,
+      message: "Saved search deleted",
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   searchListings,
   getSearchFilters,
   getSearchSuggestions,
+  saveSearch,
+  listSavedSearches,
+  deleteSavedSearch,
 };
