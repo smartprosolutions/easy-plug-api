@@ -49,7 +49,7 @@ async function createAddressByBrowser(req, res, next) {
         message: "browserId must be a valid UUID",
       });
 
-    const payload = { ...rest, userId: browserId };
+    const payload = { ...rest, userId: null };
     const addr = await Address.create(payload);
 
     return res.status(201).json({ success: true, address: addr });
