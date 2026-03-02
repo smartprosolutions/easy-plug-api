@@ -3,7 +3,7 @@ const {
   users: User,
   sellerInfo: SellerInfo,
   address: Address,
-  sequelize
+  sequelize,
 } = require("../models");
 const { OAuth2Client } = require("google-auth-library");
 const bcrypt = require("bcryptjs");
@@ -42,7 +42,7 @@ async function loginWithEmail(req, res, next) {
         .json({ success: false, message: "Invalid credentials" });
 
     const token = jwt.sign({ id: user.userId, email: user.email }, JWT_SECRET, {
-      expiresIn: "7d"
+      expiresIn: "7d",
     });
     // Exclude passwordHash from user details
     const { passwordHash, ...userData } = user.toJSON();
@@ -69,7 +69,7 @@ async function loginWithGoogle(req, res, next) {
 
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
-      audience: GOOGLE_CLIENT_ID || undefined
+      audience: GOOGLE_CLIENT_ID || undefined,
     });
     const payload = ticket.getPayload();
     const email = payload.email;
@@ -83,7 +83,7 @@ async function loginWithGoogle(req, res, next) {
         lastName: payload.family_name || "",
         email,
         status: "active",
-        userType: "user"
+        userType: "user",
       });
     }
 
@@ -91,8 +91,8 @@ async function loginWithGoogle(req, res, next) {
       { id: user.userId, email: user.email },
       JWT_SECRET,
       {
-        expiresIn: "7d"
-      }
+        expiresIn: "7d",
+      },
     );
     const { passwordHash, ...userData } = user.toJSON();
     return res.json({ success: true, accessToken, user: userData });
@@ -112,13 +112,13 @@ async function sendVerificationCode(req, res, next) {
     const code = String(Math.floor(100000 + Math.random() * 900000));
     // create a short-lived token that includes the code (not the user password)
     const verificationToken = jwt.sign({ email, code }, JWT_SECRET, {
-      expiresIn: "15m"
+      expiresIn: "15m",
     });
     const tpl = templates.verifyCode({ code, email });
     await sendEmail({
       email,
       subject: tpl.subject,
-      html: tpl.html
+      html: tpl.html,
     });
     return res.json({ success: true, verificationToken, message: "Code sent" });
   } catch (err) {
@@ -133,7 +133,7 @@ async function verifyCode(req, res, next) {
     if (!verificationToken || !code)
       return res.status(400).json({
         success: false,
-        message: "verificationToken and code required"
+        message: "verificationToken and code required",
       });
     let payload;
     try {
@@ -141,7 +141,7 @@ async function verifyCode(req, res, next) {
     } catch (err) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired verification token"
+        message: "Invalid or expired verification token",
       });
     }
     if (payload.code !== String(code) || payload.email !== payload.email)
@@ -150,9 +150,36 @@ async function verifyCode(req, res, next) {
     const regToken = jwt.sign(
       { email: payload.email, verified: true },
       JWT_SECRET,
-      { expiresIn: "1h" }
+      { expiresIn: "1h" },
     );
     return res.json({ success: true, regToken });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function sendTestEmail(req, res, next) {
+  try {
+    const userEmail = req.user && req.user.email;
+    const targetEmail = req.body?.email || userEmail;
+
+    if (!targetEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Target email is required",
+      });
+    }
+
+    await sendEmail({
+      email: targetEmail,
+      subject: "Easy Plug test email",
+      html: `<p>This is a test email from Easy Plug API.</p><p>If you received this, SMTP is configured correctly.</p>`,
+    });
+
+    return res.json({
+      success: true,
+      message: `Test email sent to ${targetEmail}`,
+    });
   } catch (err) {
     next(err);
   }
@@ -171,9 +198,9 @@ async function getLoggedInUser(req, res, next) {
           model: Address,
           separate: true,
           limit: 1,
-          order: [["createdAt", "DESC"]]
-        }
-      ]
+          order: [["createdAt", "DESC"]],
+        },
+      ],
     });
     if (user) {
       const latestAddress =
@@ -207,9 +234,9 @@ async function getLoggedInUserWithSellerInfo(req, res, next) {
           model: Address,
           separate: true,
           limit: 1,
-          order: [["createdAt", "DESC"]]
-        }
-      ]
+          order: [["createdAt", "DESC"]],
+        },
+      ],
     });
     if (user && user.sellerInfo) {
       const latestAddress =
@@ -230,7 +257,8 @@ async function getLoggedInUserWithSellerInfo(req, res, next) {
 async function registerUser(req, res, next) {
   try {
     // require that the caller provide a regToken (from verifyCode) proving email ownership
-    const { email, password, confirmPassword, firstName, lastName, regToken } = req.body;
+    const { email, password, confirmPassword, firstName, lastName, regToken } =
+      req.body;
     if (!email || !password)
       return res
         .status(400)
@@ -271,13 +299,13 @@ async function registerUser(req, res, next) {
       ...req.body,
       passwordHash: hashed,
       status: "active",
-      userType: "user"
+      userType: "user",
     };
 
     const user = await User.create(payload);
 
     const token = jwt.sign({ id: user.userId, email: user.email }, JWT_SECRET, {
-      expiresIn: "7d"
+      expiresIn: "7d",
     });
     const { passwordHash, ...userData } = user.toJSON();
     return res.status(201).json({ success: true, token, user: userData });
@@ -298,21 +326,36 @@ async function registerSeller(req, res, next) {
     }
     return false;
   };
-  const getBusinessFlag = (body) => {
-    const { sellerType, accountType, registrationType, isBusiness } = body;
-    const typeStr = (sellerType || accountType || registrationType || "")
-      .toString()
-      .toLowerCase();
-    return typeof isBusiness === "boolean"
-      ? isBusiness
-      : typeStr === "business";
+  const buildAddressPayload = (body, userId) => {
+    const payload = {
+      userId,
+      latitude: body.latitude,
+      longitude: body.longitude,
+      accuracy: body.accuracy,
+      radius: body.radius,
+      streetNumber: body.streetNumber,
+      streetName: body.streetName,
+      suburb: body.suburb,
+      city: body.city,
+      province: body.province,
+      country: body.country,
+      postalCode: body.postalCode,
+    };
+
+    const hasAddressData = Object.entries(payload).some(([key, value]) => {
+      if (key === "userId") return false;
+      if (value === undefined || value === null) return false;
+      return String(value).trim() !== "";
+    });
+
+    return hasAddressData ? payload : null;
   };
   const moveOneFile = async (fileObj, destDir, savedPaths) => {
     const base = fileObj.name || "file";
     const safe = `${Date.now()}-${base.replace(/[^a-z0-9.\-_]/gi, "_")}`;
     const full = path.join(destDir, safe);
     await new Promise((resolve, reject) =>
-      fileObj.mv(full, (err) => (err ? reject(err) : resolve()))
+      fileObj.mv(full, (err) => (err ? reject(err) : resolve())),
     );
     savedPaths.push(full);
     return safe;
@@ -326,25 +369,24 @@ async function registerSeller(req, res, next) {
       password,
       alreadyHasAccount,
       ifAlreadyHasAccount,
-      existingEmail
+      existingEmail,
     } = req.body;
 
     const hasExisting =
       toBool(alreadyHasAccount) || toBool(ifAlreadyHasAccount);
-    const businessFlag = getBusinessFlag(req.body);
 
     if (hasExisting) {
       const lookupEmail = existingEmail || email;
       if (!lookupEmail) {
         return res.status(400).json({
           success: false,
-          message: "existingEmail is required when alreadyHasAccount is yes"
+          message: "existingEmail is required when alreadyHasAccount is yes",
         });
       }
 
       // Validate user exists
       const existingUser = await User.findOne({
-        where: { email: lookupEmail }
+        where: { email: lookupEmail },
       });
       if (!existingUser) {
         return res
@@ -354,12 +396,12 @@ async function registerSeller(req, res, next) {
 
       // If sellerInfo already exists, block registering business again
       const existingInfo = await SellerInfo.findOne({
-        where: { userId: existingUser.userId }
+        where: { userId: existingUser.userId },
       });
       if (existingInfo) {
         return res.status(409).json({
           success: false,
-          message: "A business is already linked to this account"
+          message: "A business is already linked to this account",
         });
       }
 
@@ -371,7 +413,7 @@ async function registerSeller(req, res, next) {
           process.cwd(),
           "uploads",
           "pictures",
-          lookupEmail
+          lookupEmail,
         );
         fs.mkdirSync(destDir, { recursive: true });
         if (req.files.profilePicture) {
@@ -409,35 +451,52 @@ async function registerSeller(req, res, next) {
           businessEmail: req.body.businessEmail || existingUser.email,
           businessPicture: businessFilename || null,
           verified: false,
-          status: "active"
+          status: "active",
         };
         const info = await SellerInfo.create(sellerInfoPayload, {
-          transaction: t
+          transaction: t,
         });
         // persist profile picture onto user if provided
         if (profileFilename) {
           existingUser.profilePicture = profileFilename;
           await existingUser.save({ transaction: t });
         }
-        return { user: existingUser, info, profileFilename, businessFilename };
+
+        const addressPayload = buildAddressPayload(
+          req.body,
+          existingUser.userId,
+        );
+        let address = null;
+        if (addressPayload) {
+          address = await Address.create(addressPayload, { transaction: t });
+        }
+
+        return {
+          user: existingUser,
+          info,
+          profileFilename,
+          businessFilename,
+          address,
+        };
       });
 
       const token = jwt.sign(
         { id: result.user.userId, email: result.user.email },
         JWT_SECRET,
-        { expiresIn: "7d" }
+        { expiresIn: "7d" },
       );
       return res.status(201).json({
         success: true,
         token,
         sellerInfo: result.info,
+        address: result.address,
         profilePicture: result.profileFilename,
         businessPicture: result.businessFilename,
         user: {
           id: result.user.userId,
           email: result.user.email,
-          userType: result.user.userType
-        }
+          userType: result.user.userType,
+        },
       });
     }
 
@@ -484,10 +543,17 @@ async function registerSeller(req, res, next) {
 
     const hashed = await bcrypt.hash(password, SALT_ROUNDS);
     const payload = {
-      ...req.body,
+      title: req.body.title,
+      firstName: req.body.firstName,
+      lastName: req.body.lastName,
+      email,
+      dateOfBirth: req.body.dateOfBirth,
+      idNumber: req.body.idNumber,
+      phone: req.body.phone,
+      profilePicture: profileFilename || null,
       passwordHash: hashed,
       status: "active",
-      userType: "seller"
+      userType: "seller",
     };
 
     const result = await sequelize.transaction(async (t) => {
@@ -502,30 +568,38 @@ async function registerSeller(req, res, next) {
         businessEmail: req.body.businessEmail || user.email,
         businessPicture: businessFilename || null,
         verified: false,
-        status: "active"
+        status: "active",
       };
       const info = await SellerInfo.create(sellerInfoPayload, {
-        transaction: t
+        transaction: t,
       });
       // persist profile picture onto user if provided
       if (profileFilename) {
         user.profilePicture = profileFilename;
         await user.save({ transaction: t });
       }
-      return { user, info };
+
+      const addressPayload = buildAddressPayload(req.body, user.userId);
+      let address = null;
+      if (addressPayload) {
+        address = await Address.create(addressPayload, { transaction: t });
+      }
+
+      return { user, info, address };
     });
 
     const token = jwt.sign(
       { id: result.user.userId, email: result.user.email },
       JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
     return res.status(201).json({
       success: true,
       token,
       sellerInfo: result.info,
+      address: result.address,
       profilePicture: profileFilename,
-      businessPicture: businessFilename
+      businessPicture: businessFilename,
     });
   } catch (err) {
     // cleanup any files saved before failing
@@ -559,7 +633,7 @@ async function forgotPassword(req, res, next) {
     const resetToken = jwt.sign(
       { id: user.id, email: user.email, reset: true },
       JWT_SECRET,
-      { expiresIn: RESET_TOKEN_EXP }
+      { expiresIn: RESET_TOKEN_EXP },
     );
 
     // TODO: send resetToken via email to the user. For now, return in response for manual testing.
@@ -576,7 +650,7 @@ async function resetPassword(req, res, next) {
     if (!resetToken || !newPassword)
       return res.status(400).json({
         success: false,
-        message: "resetToken and newPassword required"
+        message: "resetToken and newPassword required",
       });
 
     let payload;
@@ -618,5 +692,6 @@ module.exports = {
   forgotPassword,
   resetPassword,
   sendVerificationCode,
-  verifyCode
+  verifyCode,
+  sendTestEmail,
 };
