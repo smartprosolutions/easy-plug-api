@@ -1,9 +1,9 @@
 {
   "development": {
-    "username": "backend_user",
-    "password": "postgres_local",
+    "username": "postgres",
+    "password": "@Password123!",
     "database": "easyplug_db",
-    "host": "172.29.70.232",
+    "host": "localhost",
     "dialect": "postgres",
     "port": 5432
   },
