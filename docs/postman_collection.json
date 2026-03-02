@@ -6,8 +6,17 @@
     "_postman_id": "easyplug-api-v3"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8000/api/v1", "type": "string" },
-    { "key": "socketUrl", "value": "http://localhost:8000", "type": "string", "description": "Socket.IO server URL (without /api/v1 prefix)" },
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "socketUrl",
+      "value": "http://localhost:8000",
+      "type": "string",
+      "description": "Socket.IO server URL (without /api/v1 prefix)"
+    },
     { "key": "authToken", "value": "", "type": "string" },
     { "key": "userId", "value": "", "type": "string" },
     { "key": "sellerId", "value": "", "type": "string" },
@@ -229,6 +238,27 @@
               "path": ["auth", "me"]
             },
             "description": "Get currently authenticated user info"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"kamzen1994@gmail.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/test-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "test-email"]
+            },
+            "description": "Send test email to provided address (or logged-in user email if omitted)"
           },
           "response": []
         },
@@ -1003,11 +1033,54 @@
               "host": ["{{baseUrl}}"],
               "path": ["chat-messages", "{{chatId}}"],
               "query": [
-                { "key": "limit", "value": "100", "description": "Number of messages to return (default: 100)" },
-                { "key": "offset", "value": "0", "description": "Number of messages to skip for pagination" }
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "Number of messages to return (default: 100)"
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Number of messages to skip for pagination"
+                }
               ]
             },
             "description": "Retrieve paginated messages for a chat, ordered by `createdAt ASC`.\n\n**Query params:**\n- `limit` - messages per page (default: 100)\n- `offset` - skip N messages (default: 0)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Unread Message Count",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test('Unread count returned', function () {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "        pm.expect(jsonData).to.have.property('unreadCount');",
+                  "        pm.expect(jsonData.unreadCount).to.be.a('number');",
+                  "    });",
+                  "    console.log('📨 Unread message count:', jsonData.unreadCount);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chat-messages/unread/count",
+              "host": ["{{baseUrl}}"],
+              "path": ["chat-messages", "unread", "count"]
+            },
+            "description": "Get total unread messages for the authenticated user across all chats."
           },
           "response": []
         },
