@@ -6,6 +6,7 @@ const {
 } = require("../models");
 const { Op } = require("sequelize");
 const { success, fail } = require("../utils/response");
+const { createNotification } = require("./notificationsController");
 
 // create or return existing chat between buyer and seller for a listing
 async function createOrGetChat(req, res, next) {
@@ -17,9 +18,39 @@ async function createOrGetChat(req, res, next) {
       return fail(res, "listingId and sellerId required", 400);
 
     // try to find existing chat
+    let isNewChat = false;
     let chat = await Chat.findOne({ where: { listingId, buyerId, sellerId } });
     if (!chat) {
       chat = await Chat.create({ listingId, buyerId, sellerId });
+      isNewChat = true;
+    }
+
+    if (isNewChat && sellerId && sellerId !== buyerId) {
+      const [buyer, listing] = await Promise.all([
+        User.findByPk(buyerId, {
+          attributes: ["userId", "firstName", "lastName"],
+        }),
+        Listing.findByPk(listingId, {
+          attributes: ["listingId", "title"],
+        }),
+      ]);
+
+      if (buyer && listing) {
+        await createNotification(
+          sellerId,
+          "message",
+          "New Chat Started",
+          `${buyer.firstName} ${buyer.lastName} started a chat about "${listing.title}".`,
+          `/chats/${chat.chatId || chat.id}`,
+          {
+            chatId: chat.chatId || chat.id,
+            listingId,
+            listingTitle: listing.title,
+            buyerId,
+            buyerName: `${buyer.firstName} ${buyer.lastName}`,
+          },
+        );
+      }
     }
 
     const chatPk = chat.chatId || chat.id;
