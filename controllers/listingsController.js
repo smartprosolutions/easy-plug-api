@@ -31,20 +31,192 @@ function haversineDistanceKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+function parseLocationQuery(query) {
+  const { latitude, longitude, maxDistance, radius } = query || {};
+  const userLat = latitude ? parseFloat(latitude) : null;
+  const userLon = longitude ? parseFloat(longitude) : null;
+  const maxDistRaw = maxDistance || radius;
+  const maxDist = maxDistRaw ? parseFloat(maxDistRaw) : null;
+
+  const hasCoordinates =
+    Number.isFinite(userLat) &&
+    Number.isFinite(userLon) &&
+    userLat >= -90 &&
+    userLat <= 90 &&
+    userLon >= -180 &&
+    userLon <= 180;
+
+  return { userLat, userLon, maxDist, hasCoordinates };
+}
+
+function buildLatestAddressDistanceSql(userLat, userLon) {
+  const latestLatSql =
+    '(SELECT a."latitude"::double precision FROM "addresses" a WHERE a."userId" = "listings"."sellerId" ORDER BY a."createdAt" DESC LIMIT 1)';
+  const latestLonSql =
+    '(SELECT a."longitude"::double precision FROM "addresses" a WHERE a."userId" = "listings"."sellerId" ORDER BY a."createdAt" DESC LIMIT 1)';
+
+  return `(
+    6371 * acos(
+      LEAST(
+        1,
+        GREATEST(
+          -1,
+          cos(radians(${userLat})) * cos(radians(${latestLatSql})) *
+            cos(radians(${latestLonSql}) - radians(${userLon})) +
+            sin(radians(${userLat})) * sin(radians(${latestLatSql}))
+        )
+      )
+    )
+  )`;
+}
+
+function buildLocationMeta(hasCoordinates, userLat, userLon, maxDist) {
+  if (!hasCoordinates) return null;
+
+  return {
+    latitude: userLat,
+    longitude: userLon,
+    maxDistance: maxDist,
+    sortedByDistance: true,
+  };
+}
+
+function applyLocationToListings(items, userLat, userLon, maxDist) {
+  let listings = items.map((listing) => {
+    if (
+      listing.seller &&
+      listing.seller.addresses &&
+      listing.seller.addresses.length > 0
+    ) {
+      const sellerAddr = listing.seller.addresses[0];
+      if (sellerAddr.latitude && sellerAddr.longitude) {
+        const distance = haversineDistanceKm(
+          userLat,
+          userLon,
+          parseFloat(sellerAddr.latitude),
+          parseFloat(sellerAddr.longitude),
+        );
+        listing.dataValues.distance = Math.round(distance * 10) / 10;
+        return listing;
+      }
+    }
+
+    listing.dataValues.distance = null;
+    return listing;
+  });
+
+  if (Number.isFinite(maxDist) && maxDist > 0) {
+    listings = listings.filter(
+      (l) => l.dataValues.distance !== null && l.dataValues.distance <= maxDist,
+    );
+  }
+
+  listings.sort((a, b) => {
+    const distA =
+      a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+    const distB =
+      b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+    return distA - distB;
+  });
+
+  return listings;
+}
+
 async function listListings(req, res, next) {
   try {
-    // require authenticated user so we can return listings the user has not seen
-    const userId = req.user && req.user.id;
+    // Strict location parameters (no fallback)
+    const { userLat, userLon, maxDist, hasCoordinates } = parseLocationQuery(
+      req.query,
+    );
 
-    // Get optional location parameters for proximity sorting
-    const { latitude, longitude, maxDistance } = req.query;
-    const userLat = latitude ? parseFloat(latitude) : null;
-    const userLon = longitude ? parseFloat(longitude) : null;
-    const maxDist = maxDistance ? parseFloat(maxDistance) : null;
+    const hasRequiredLocation =
+      hasCoordinates && Number.isFinite(maxDist) && maxDist > 0;
 
-    // fetch candidate listings (not seen)
+    // no fallback listings: when required location/radius inputs are missing/invalid,
+    // return an empty set instead of default newest listings.
+    if (!hasRequiredLocation) {
+      return res.json({
+        success: true,
+        listings: [],
+        page: Math.max(parseInt(req.query.page || "1", 10) || 1, 1),
+        averageRating: 0,
+        ratingsCount: 0,
+        counts: {
+          adsTotal: 0,
+          standardTotal: 0,
+        },
+        location: {
+          latitude: userLat,
+          longitude: userLon,
+          maxDistance: maxDist,
+          sortedByDistance: true,
+          fallbackUsed: false,
+          required: ["latitude", "longitude", "radius|maxDistance"],
+        },
+      });
+    }
+
+    const distanceSql = buildLatestAddressDistanceSql(userLat, userLon);
+
+    // fetch candidate listings (not seen), location-filtered in DB
     const candidates = await Listing.findAll({
-      where: { [Op.or]: [{ isSeen: false }, { isSeen: null }] },
+      where: {
+        [Op.or]: [{ isSeen: false }, { isSeen: null }],
+        [Op.and]: [
+          db.sequelize.where(db.sequelize.literal(distanceSql), {
+            [Op.lte]: maxDist,
+          }),
+        ],
+      },
+      attributes: {
+        include: [
+          [
+            db.sequelize.literal(`ROUND((${distanceSql})::numeric, 1)`),
+            "distance",
+          ],
+          [
+            db.sequelize.literal(`(
+              SELECT COALESCE(
+                (
+                  SELECT ROUND(AVG(r."rating")::numeric, 1)
+                  FROM "ratings" r
+                  WHERE r."listingId" = "listings"."listingId"
+                ),
+                (
+                  SELECT ROUND(AVG(r2."rating")::numeric, 1)
+                  FROM "ratings" r2
+                  WHERE r2."sellerId" = "listings"."sellerId"
+                    AND r2."listingId" IS NULL
+                ),
+                0
+              )
+            )`),
+            "averageRating",
+          ],
+          [
+            db.sequelize.literal(`(
+              SELECT COALESCE(
+                NULLIF(
+                  (
+                    SELECT COUNT(r."id")
+                    FROM "ratings" r
+                    WHERE r."listingId" = "listings"."listingId"
+                  ),
+                  0
+                ),
+                (
+                  SELECT COUNT(r2."id")
+                  FROM "ratings" r2
+                  WHERE r2."sellerId" = "listings"."sellerId"
+                    AND r2."listingId" IS NULL
+                ),
+                0
+              )
+            )`),
+            "ratingsCount",
+          ],
+        ],
+      },
       include: [
         {
           model: User,
@@ -53,20 +225,6 @@ async function listListings(req, res, next) {
           include: [
             {
               model: Address,
-              attributes: [
-                "addressId",
-                "latitude",
-                "longitude",
-                "radius",
-                "streetNumber",
-                "streetName",
-                "suburb",
-                "city",
-                "province",
-                "country",
-                "postalCode",
-                "createdAt",
-              ],
               separate: true,
               limit: 1,
               order: [["createdAt", "DESC"]],
@@ -75,57 +233,20 @@ async function listListings(req, res, next) {
         },
         {
           model: SellerSubscription,
-          attributes: ["sellerSubscriptionId", "subscriptionId"],
           include: [
             {
               model: Subscription,
-              attributes: [
-                "subscriptionId",
-                "name",
-                "durationInHours",
-                "price",
-                "status",
-              ],
             },
           ],
         },
       ],
+      order: [
+        [db.sequelize.literal(distanceSql), "ASC"],
+        ["createdAt", "DESC"],
+      ],
     });
 
-    let filtered = candidates;
-
-    // Calculate distances and filter by maxDistance if location provided
-    if (userLat !== null && userLon !== null) {
-      filtered = filtered.map((listing) => {
-        if (
-          listing.seller &&
-          listing.seller.addresses &&
-          listing.seller.addresses.length > 0
-        ) {
-          const sellerAddr = listing.seller.addresses[0];
-          if (sellerAddr.latitude && sellerAddr.longitude) {
-            const distance = haversineDistanceKm(
-              userLat,
-              userLon,
-              parseFloat(sellerAddr.latitude),
-              parseFloat(sellerAddr.longitude),
-            );
-            listing.dataValues.distance = Math.round(distance * 10) / 10;
-            return listing;
-          }
-        }
-        listing.dataValues.distance = null;
-        return listing;
-      });
-
-      // Filter by maxDistance if specified
-      if (maxDist !== null) {
-        filtered = filtered.filter(
-          (l) =>
-            l.dataValues.distance !== null && l.dataValues.distance <= maxDist,
-        );
-      }
-    }
+    const filtered = candidates;
 
     // split into ads and standard
     // Exclude catalogue child items from top-level list.
@@ -135,29 +256,21 @@ async function listListings(req, res, next) {
       (l) => !l.isAdvertisement && !l.parentAdvertId,
     );
 
-    // Sort by distance if location provided, otherwise by date
-    if (userLat !== null && userLon !== null) {
-      ads = ads.sort((a, b) => {
-        const distA =
-          a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
-        const distB =
-          b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
-        return distA - distB;
-      });
-      standard = standard.sort((a, b) => {
-        const distA =
-          a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
-        const distB =
-          b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
-        return distA - distB;
-      });
-    } else {
-      // Default sort by newest first
-      ads = ads.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      standard = standard.sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
-      );
-    }
+    // Always sort by distance for strict location listing mode
+    ads = ads.sort((a, b) => {
+      const distA =
+        a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+      const distB =
+        b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+      return distA - distB;
+    });
+    standard = standard.sort((a, b) => {
+      const distA =
+        a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
+      const distB =
+        b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
+      return distA - distB;
+    });
 
     // pagination pattern per page: 8 ads, 24 standard, 8 ads
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
@@ -169,76 +282,27 @@ async function listListings(req, res, next) {
     const bottomAds = ads.slice(adOffset + 8, adOffset + 16);
 
     const pageListings = [...topAds, ...stdItems, ...bottomAds];
+    const ratingsTotals = pageListings.reduce(
+      (acc, listing) => {
+        const listingAvg = Number(listing.dataValues.averageRating || 0);
+        const listingCount = Number(listing.dataValues.ratingsCount || 0);
 
-    const listingIds = [
-      ...new Set(pageListings.map((l) => l.listingId).filter(Boolean)),
-    ];
-    const ratingsByListing = new Map();
-    let allPageRatings = [];
+        if (Number.isFinite(listingCount) && listingCount > 0) {
+          const safeAvg = Number.isFinite(listingAvg) ? listingAvg : 0;
+          acc.ratingsCount += listingCount;
+          acc.ratingsSum += safeAvg * listingCount;
+        }
 
-    if (listingIds.length > 0) {
-      const listingRatings = await Rating.findAll({
-        where: { listingId: { [Op.in]: listingIds } },
-        include: [
-          {
-            model: User,
-            as: "user",
-            attributes: ["userId", "firstName", "lastName", "profilePicture"],
-          },
-        ],
-        order: [["createdAt", "DESC"]],
-      });
+        return acc;
+      },
+      { ratingsCount: 0, ratingsSum: 0 },
+    );
 
-      for (const r of listingRatings) {
-        const lid = r.listingId;
-        const existing = ratingsByListing.get(lid) || [];
-        existing.push(r);
-        ratingsByListing.set(lid, existing);
-      }
-
-      allPageRatings = listingRatings
-        .map((r) => Number(r.rating))
-        .filter((val) => Number.isFinite(val));
-    }
-
-    for (const listing of pageListings) {
-      const listingRatings = ratingsByListing.get(listing.listingId) || [];
-      const ratingValues = listingRatings
-        .map((r) => Number(r.rating))
-        .filter((val) => Number.isFinite(val));
-
-      const avg =
-        ratingValues.length > 0
-          ? Number(
-              (
-                ratingValues.reduce((sum, current) => sum + current, 0) /
-                ratingValues.length
-              ).toFixed(1),
-            )
-          : 0;
-
-      listing.dataValues.averageRating = avg;
-      listing.dataValues.ratings = listingRatings.map((r) => ({
-        ratingId: r.ratingId,
-        listingId: r.listingId,
-        sellerId: r.sellerId,
-        userId: r.userId,
-        rating: r.rating,
-        comment: r.comment,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-        user: r.user,
-      }));
-    }
+    const overallRatingsCount = ratingsTotals.ratingsCount;
 
     const overallAverageRating =
-      allPageRatings.length > 0
-        ? Number(
-            (
-              allPageRatings.reduce((sum, current) => sum + current, 0) /
-              allPageRatings.length
-            ).toFixed(1),
-          )
+      overallRatingsCount > 0
+        ? Number((ratingsTotals.ratingsSum / overallRatingsCount).toFixed(1))
         : 0;
 
     return res.json({
@@ -246,20 +310,15 @@ async function listListings(req, res, next) {
       listings: pageListings,
       page,
       averageRating: overallAverageRating,
-      ratingsCount: allPageRatings.length,
+      ratingsCount: overallRatingsCount,
       counts: {
         adsTotal: ads.length,
         standardTotal: standard.length,
       },
-      location:
-        userLat && userLon
-          ? {
-              latitude: userLat,
-              longitude: userLon,
-              maxDistance: maxDist,
-              sortedByDistance: true,
-            }
-          : null,
+      location: {
+        ...buildLocationMeta(hasCoordinates, userLat, userLon, maxDist),
+        fallbackUsed: false,
+      },
     });
   } catch (err) {
     next(err);
@@ -269,28 +328,48 @@ async function listListings(req, res, next) {
 // Ads: list only advertisements, 8 per page
 async function listAdListings(req, res, next) {
   try {
-    const userId = req.user && req.user.id;
-    if (!userId) return fail(res, "User not authenticated", 401);
-
-    // Get optional location parameters for proximity sorting
-    const { latitude, longitude, maxDistance } = req.query;
-    const userLat = latitude ? parseFloat(latitude) : null;
-    const userLon = longitude ? parseFloat(longitude) : null;
-    const maxDist = maxDistance ? parseFloat(maxDistance) : null;
+    // Optional location parameters for DB-side proximity filtering/sorting
+    const { userLat, userLon, maxDist, hasCoordinates } = parseLocationQuery(
+      req.query,
+    );
 
     const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
     const pageSize = 8;
 
-    // Fetch all matching listings (we'll sort and paginate in memory if using location)
-    const fetchAll = userLat !== null && userLon !== null;
-    const offset = fetchAll ? 0 : (page - 1) * pageSize;
-    const limit = fetchAll ? undefined : pageSize;
+    const offset = (page - 1) * pageSize;
+    const limit = pageSize;
+
+    const distanceSql = hasCoordinates
+      ? buildLatestAddressDistanceSql(userLat, userLon)
+      : null;
+
+    const where = {
+      isAdvertisement: true,
+      [Op.or]: [{ isSeen: false }, { isSeen: null }],
+    };
+
+    if (hasCoordinates && Number.isFinite(maxDist) && maxDist > 0) {
+      where[Op.and] = [
+        db.sequelize.where(db.sequelize.literal(distanceSql), {
+          [Op.lte]: maxDist,
+        }),
+      ];
+    }
 
     const { rows, count } = await Listing.findAndCountAll({
       where: {
-        isAdvertisement: true,
-        [Op.or]: [{ isSeen: false }, { isSeen: null }],
+        ...where,
       },
+      attributes: hasCoordinates
+        ? {
+            include: [
+              [
+                db.sequelize.literal(`ROUND((${distanceSql})::numeric, 1)`),
+                "distance",
+              ],
+            ],
+          }
+        : undefined,
       include: [
         {
           model: User,
@@ -299,20 +378,6 @@ async function listAdListings(req, res, next) {
           include: [
             {
               model: Address,
-              attributes: [
-                "addressId",
-                "latitude",
-                "longitude",
-                "radius",
-                "streetNumber",
-                "streetName",
-                "suburb",
-                "city",
-                "province",
-                "country",
-                "postalCode",
-                "createdAt",
-              ],
               separate: true,
               limit: 1,
               order: [["createdAt", "DESC"]],
@@ -321,95 +386,47 @@ async function listAdListings(req, res, next) {
         },
         {
           model: SellerSubscription,
-          attributes: ["sellerSubscriptionId", "subscriptionId"],
           include: [
             {
               model: Subscription,
-              attributes: [
-                "subscriptionId",
-                "name",
-                "durationInHours",
-                "price",
-                "pricingTiers",
-                "status",
-              ],
             },
           ],
         },
       ],
-      order: userLat === null ? [["createdAt", "DESC"]] : [],
+      order: hasCoordinates
+        ? [
+            [db.sequelize.literal(distanceSql), "ASC"],
+            ["createdAt", "DESC"],
+          ]
+        : [["createdAt", "DESC"]],
       limit,
       offset,
       distinct: true,
     });
 
-    let listings = rows;
-    let totalCount = count;
+    const listings = rows;
+    const totalCount = count;
 
-    // Calculate distances and sort by proximity if location provided
-    if (userLat !== null && userLon !== null) {
-      listings = listings.map((listing) => {
-        if (
-          listing.seller &&
-          listing.seller.addresses &&
-          listing.seller.addresses.length > 0
-        ) {
-          const sellerAddr = listing.seller.addresses[0];
-          if (sellerAddr.latitude && sellerAddr.longitude) {
-            const distance = haversineDistanceKm(
-              userLat,
-              userLon,
-              parseFloat(sellerAddr.latitude),
-              parseFloat(sellerAddr.longitude),
-            );
-            listing.dataValues.distance = Math.round(distance * 10) / 10;
-            return listing;
-          }
-        }
-        listing.dataValues.distance = null;
-        return listing;
-      });
-
-      // Filter by maxDistance if specified
-      if (maxDist !== null) {
-        listings = listings.filter(
-          (l) =>
-            l.dataValues.distance !== null && l.dataValues.distance <= maxDist,
+    // Defensive cleanup: if any listing carries relatedListings,
+    // exclude catalogue child items that belong to that specific advert.
+    const sanitizedListings = listings.map((listing) => {
+      const related = listing?.dataValues?.relatedListings;
+      if (Array.isArray(related)) {
+        listing.dataValues.relatedListings = related.filter(
+          (relatedItem) => relatedItem.parentAdvertId !== listing.listingId,
         );
-        totalCount = listings.length;
       }
-
-      // Sort by distance (nearest first)
-      listings.sort((a, b) => {
-        const distA =
-          a.dataValues.distance !== null ? a.dataValues.distance : Infinity;
-        const distB =
-          b.dataValues.distance !== null ? b.dataValues.distance : Infinity;
-        return distA - distB;
-      });
-
-      // Paginate in memory
-      const start = (page - 1) * pageSize;
-      const end = start + pageSize;
-      listings = listings.slice(start, end);
-    }
+      return listing;
+    });
 
     return res.json({
       success: true,
-      listings,
+      listings: sanitizedListings,
       page,
       pageSize,
       total: totalCount,
       totalPages: Math.ceil(totalCount / pageSize),
-      location:
-        userLat && userLon
-          ? {
-              latitude: userLat,
-              longitude: userLon,
-              maxDistance: maxDist,
-              sortedByDistance: true,
-            }
-          : null,
+      location: buildLocationMeta(hasCoordinates, userLat, userLon, maxDist),
     });
   } catch (err) {
     next(err);
@@ -601,20 +618,6 @@ async function getListing(req, res, next) {
           include: [
             {
               model: Address,
-              attributes: [
-                "addressId",
-                "latitude",
-                "longitude",
-                "radius",
-                "streetNumber",
-                "streetName",
-                "suburb",
-                "city",
-                "province",
-                "country",
-                "postalCode",
-                "createdAt",
-              ],
               separate: true,
               limit: 1,
               order: [["createdAt", "DESC"]],
@@ -622,36 +625,10 @@ async function getListing(req, res, next) {
           ],
         },
         {
-          model: Listing,
-          as: "catalogueItems",
-          where: { isAdvertisement: false },
-          required: false,
-        },
-        {
-          model: Listing,
-          as: "parentAdvert",
-          required: false,
-          include: [
-            {
-              model: User,
-              as: "seller",
-              attributes: ["userId", "firstName", "lastName", "profilePicture"],
-            },
-          ],
-        },
-        {
           model: SellerSubscription,
-          attributes: ["sellerSubscriptionId", "subscriptionId"],
           include: [
             {
               model: Subscription,
-              attributes: [
-                "subscriptionId",
-                "name",
-                "durationInHours",
-                "price",
-                "status",
-              ],
             },
           ],
         },
@@ -699,63 +676,10 @@ async function getListing(req, res, next) {
       }
     }
 
-    // Attach the latest address for the seller
-    if (item.seller && item.seller.addresses && item.seller.addresses[0]) {
-      const latestAddress = item.seller.addresses[0];
-      item.dataValues.address = latestAddress;
-      item.dataValues.sellerAddress = latestAddress;
-    }
+    // Seller address is already available in seller.addresses (latest first)
 
     item.dataValues.isCatalogueContainer = !!item.isAdvertisement;
     item.dataValues.isCatalogueItem = !!item.parentAdvertId;
-    if (item.parentAdvert) {
-      item.dataValues.catalogue = item.parentAdvert;
-    }
-
-    // Get seller ratings (average + full comments)
-    const sellerRatings = await Rating.findAll({
-      where: { listingId: item.listingId },
-      include: [
-        {
-          model: User,
-          as: "user",
-          attributes: ["userId", "firstName", "lastName", "profilePicture"],
-        },
-      ],
-      order: [["createdAt", "DESC"]],
-    });
-
-    const ratingValues = sellerRatings
-      .map((r) => Number(r.rating))
-      .filter((val) => Number.isFinite(val));
-
-    const averageRatingNumber =
-      ratingValues.length > 0
-        ? Number(
-            (
-              ratingValues.reduce((sum, current) => sum + current, 0) /
-              ratingValues.length
-            ).toFixed(1),
-          )
-        : 0;
-
-    const sellerRating = {
-      averageRating: averageRatingNumber.toFixed(1),
-      totalRatings: ratingValues.length,
-    };
-    item.dataValues.sellerRating = sellerRating;
-    item.dataValues.averageRating = averageRatingNumber;
-    item.dataValues.ratings = sellerRatings.map((r) => ({
-      ratingId: r.ratingId,
-      listingId: r.listingId,
-      sellerId: r.sellerId,
-      userId: r.userId,
-      rating: r.rating,
-      comment: r.comment,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-      user: r.user,
-    }));
 
     // Get seller join date
     if (item.seller) {
@@ -770,25 +694,6 @@ async function getListing(req, res, next) {
     });
     item.dataValues.priceHistory = priceHistory;
 
-    // Get related listings (same category, excluding current item)
-    const relatedListings = await Listing.findAll({
-      where: {
-        category: item.category,
-        listingId: { [Op.ne]: id },
-        status: "active",
-      },
-      limit: 4,
-      order: [["createdAt", "DESC"]],
-      include: [
-        {
-          model: User,
-          as: "seller",
-          attributes: ["userId", "firstName", "lastName", "profilePicture"],
-        },
-      ],
-    });
-    item.dataValues.relatedListings = relatedListings;
-
     // Check if item is in user's wishlist (if authenticated)
     if (userId) {
       const inWishlist = await Wishlist.findOne({
@@ -800,6 +705,252 @@ async function getListing(req, res, next) {
     }
 
     return res.json({ success: true, listing: item });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Get catalogue items for a listing's advert/catalogue.
+// - If id is an advert: returns its child catalogue items
+// - If id is a catalogue item: resolves parent advert and returns sibling items
+// - If id is a standard listing with no parent advert: returns empty array
+async function getListingCatalogueItems(req, res, next) {
+  try {
+    const { id: advertId } = req.params;
+
+    const catalogueItems = await Listing.findAll({
+      where: {
+        parentAdvertId: advertId,
+        isAdvertisement: { [Op.or]: [false, null] },
+        status: "active",
+      },
+      attributes: {
+        include: [
+          [
+            db.sequelize.literal(`(
+              SELECT COALESCE(
+                (
+                  SELECT ROUND(AVG(r."rating")::numeric, 1)
+                  FROM "ratings" r
+                  WHERE r."listingId" = "listings"."listingId"
+                ),
+                (
+                  SELECT ROUND(AVG(r2."rating")::numeric, 1)
+                  FROM "ratings" r2
+                  WHERE r2."sellerId" = "listings"."sellerId"
+                    AND r2."listingId" IS NULL
+                ),
+                0
+              )
+            )`),
+            "averageRating",
+          ],
+          [
+            db.sequelize.literal(`(
+              SELECT COALESCE(
+                NULLIF(
+                  (
+                    SELECT COUNT(r."id")
+                    FROM "ratings" r
+                    WHERE r."listingId" = "listings"."listingId"
+                  ),
+                  0
+                ),
+                (
+                  SELECT COUNT(r2."id")
+                  FROM "ratings" r2
+                  WHERE r2."sellerId" = "listings"."sellerId"
+                    AND r2."listingId" IS NULL
+                ),
+                0
+              )
+            )`),
+            "reviewsCount",
+          ],
+        ],
+      },
+      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: User,
+          as: "seller",
+          attributes: { exclude: ["passwordHash"] },
+          include: [
+            {
+              model: Address,
+              separate: true,
+              limit: 1,
+              order: [["createdAt", "DESC"]],
+            },
+          ],
+        },
+      ],
+    });
+
+    return res.json({
+      success: true,
+      advertId,
+      catalogueItems,
+      total: catalogueItems.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Get related listings for a listing (same category), excluding catalogue child items
+async function getRelatedListings(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { userLat, userLon, maxDist, hasCoordinates } = parseLocationQuery(
+      req.query,
+    );
+    const requestedLimit = parseInt(req.query.limit || "4", 10);
+    const limit = Math.min(
+      Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 4, 1),
+      20,
+    );
+
+    const baseListing = await Listing.findByPk(id, {
+      attributes: ["listingId", "category"],
+    });
+
+    if (!baseListing) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Listing not found" });
+    }
+
+    let relatedListings = await Listing.findAll({
+      where: {
+        category: baseListing.category,
+        listingId: { [Op.ne]: id },
+        status: "active",
+        parentAdvertId: null,
+      },
+      limit,
+      order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: User,
+          as: "seller",
+          attributes: ["userId", "firstName", "lastName", "profilePicture"],
+          include: [
+            {
+              model: Address,
+              attributes: [
+                "addressId",
+                "latitude",
+                "longitude",
+                "radius",
+                "streetNumber",
+                "streetName",
+                "suburb",
+                "city",
+                "province",
+                "country",
+                "postalCode",
+                "createdAt",
+              ],
+              separate: true,
+              limit: 1,
+              order: [["createdAt", "DESC"]],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (hasCoordinates) {
+      relatedListings = applyLocationToListings(
+        relatedListings,
+        userLat,
+        userLon,
+        maxDist,
+      ).slice(0, limit);
+    }
+
+    return res.json({
+      success: true,
+      baseListingId: id,
+      category: baseListing.category,
+      relatedListings,
+      total: relatedListings.length,
+      location: hasCoordinates
+        ? {
+            latitude: userLat,
+            longitude: userLon,
+            maxDistance: maxDist,
+            sortedByDistance: true,
+          }
+        : null,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Get ratings for a specific listing
+async function getListingRatings(req, res, next) {
+  try {
+    const { id } = req.params;
+    const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
+    const pageSize = 4;
+    const offset = (page - 1) * pageSize;
+
+    const item = await Listing.findByPk(id, {
+      attributes: ["listingId"],
+    });
+
+    if (!item) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Listing not found" });
+    }
+
+    const { rows, count } = await Rating.findAndCountAll({
+      where: { listingId: id },
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["userId", "firstName", "lastName", "profilePicture"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+      limit: pageSize,
+      offset,
+      distinct: true,
+    });
+
+    let averageRating = 0;
+    if (count > 0) {
+      const summaryRows = await Rating.findAll({
+        where: { listingId: id },
+        attributes: [
+          [db.sequelize.fn("AVG", db.sequelize.col("rating")), "avgRating"],
+        ],
+        raw: true,
+      });
+
+      const avgRaw =
+        summaryRows && summaryRows[0] ? summaryRows[0].avgRating : 0;
+      const parsedAvg = Number(avgRaw);
+      averageRating = Number.isFinite(parsedAvg)
+        ? Number(parsedAvg.toFixed(1))
+        : 0;
+    }
+
+    return res.json({
+      success: true,
+      listingId: id,
+      ratings: rows,
+      averageRating,
+      ratingsCount: count,
+      page,
+      pageSize,
+      totalPages: Math.ceil(count / pageSize),
+    });
   } catch (err) {
     next(err);
   }
@@ -821,7 +972,7 @@ function parseArrayField(field) {
 }
 
 // Helper to handle file uploads for listings
-async function handleListingFileUploads(req, sellerEmail, folderName) {
+async function handleListingFileUploads(req, sellerEmail) {
   const uploadedFiles = [];
   if (!req.files) return uploadedFiles;
 
@@ -839,7 +990,6 @@ async function handleListingFileUploads(req, sellerEmail, folderName) {
       "listings",
       sellerEmail,
       "images",
-      folderName,
     );
     fs.mkdirSync(destDir, { recursive: true });
 
@@ -853,18 +1003,6 @@ async function handleListingFileUploads(req, sellerEmail, folderName) {
     }
   }
   return uploadedFiles;
-}
-
-async function resolveListingUploadFolder(listing) {
-  if (listing.parentAdvertId) {
-    return "catalogue";
-  }
-
-  if (listing.isAdvertisement) {
-    return "advert";
-  }
-
-  return "standard";
 }
 
 // Create a standard listing (isAdvertisement = false)
@@ -894,11 +1032,7 @@ async function createListing(req, res, next) {
     } = req.body;
 
     // Handle file uploads
-    const uploadedFiles = await handleListingFileUploads(
-      req,
-      sellerEmail,
-      "standard",
-    );
+    const uploadedFiles = await handleListingFileUploads(req, sellerEmail);
 
     const payload = {
       sellerId,
@@ -945,7 +1079,6 @@ async function createListing(req, res, next) {
             "listings",
             sellerEmail,
             "images",
-            "standard",
             fileName,
           );
           if (fs.existsSync(p)) fs.unlinkSync(p);
@@ -1019,11 +1152,7 @@ async function createAdvertListing(req, res, next) {
     }
 
     // Handle file uploads (catalogue cover images)
-    const uploadedFiles = await handleListingFileUploads(
-      req,
-      sellerEmail,
-      "advert",
-    );
+    const uploadedFiles = await handleListingFileUploads(req, sellerEmail);
 
     // Advert/catalogue - price from pricingTier or 0, condition n/a, it's a container
     const advertPrice =
@@ -1076,7 +1205,6 @@ async function createAdvertListing(req, res, next) {
             "listings",
             sellerEmail,
             "images",
-            "advert",
             fileName,
           );
           if (fs.existsSync(p)) fs.unlinkSync(p);
@@ -1131,11 +1259,7 @@ async function addListingToAdvert(req, res, next) {
     } = req.body;
 
     // Handle file uploads
-    const uploadedFiles = await handleListingFileUploads(
-      req,
-      sellerEmail,
-      "catalogue",
-    );
+    const uploadedFiles = await handleListingFileUploads(req, sellerEmail);
 
     const payload = {
       sellerId,
@@ -1183,7 +1307,6 @@ async function addListingToAdvert(req, res, next) {
             "listings",
             sellerEmail,
             "images",
-            "catalogue",
             fileName,
           );
           if (fs.existsSync(p)) fs.unlinkSync(p);
@@ -1284,7 +1407,6 @@ async function getSellerCatalogue(req, res, next) {
 
 async function updateListing(req, res, next) {
   let uploadedFiles = [];
-  let uploadFolder = null;
   let ownerEmail = null;
 
   try {
@@ -1309,12 +1431,7 @@ async function updateListing(req, res, next) {
     const removedImages = parseArrayField(req.body.removedImages);
 
     if (req.files && (req.files.images || req.files.file)) {
-      uploadFolder = await resolveListingUploadFolder(item);
-      uploadedFiles = await handleListingFileUploads(
-        req,
-        ownerEmail,
-        uploadFolder,
-      );
+      uploadedFiles = await handleListingFileUploads(req, ownerEmail);
     }
 
     let baseImages =
@@ -1387,7 +1504,7 @@ async function updateListing(req, res, next) {
   } catch (err) {
     // cleanup uploaded files on failure
     try {
-      if (uploadedFiles.length > 0 && uploadFolder && ownerEmail) {
+      if (uploadedFiles.length > 0 && ownerEmail) {
         for (const fileName of uploadedFiles) {
           const p = path.join(
             process.cwd(),
@@ -1395,7 +1512,6 @@ async function updateListing(req, res, next) {
             "listings",
             ownerEmail,
             "images",
-            uploadFolder,
             fileName,
           );
           if (fs.existsSync(p)) fs.unlinkSync(p);
@@ -1433,6 +1549,9 @@ module.exports = {
   adminListListings,
   sellerListListings,
   getListing,
+  getListingCatalogueItems,
+  getRelatedListings,
+  getListingRatings,
   createListing,
   createAdvertListing,
   addListingToAdvert,
