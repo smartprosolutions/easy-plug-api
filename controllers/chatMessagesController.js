@@ -152,4 +152,47 @@ async function markAsRead(req, res, next) {
   }
 }
 
-module.exports = { sendMessage, listMessages, markAsRead };
+// unread messages total for authenticated user
+async function getUnreadMessageCount(req, res, next) {
+  try {
+    const userId = req.user && req.user.id;
+    if (!userId) return fail(res, "User not authenticated", 401);
+
+    const chats = await Chat.findAll({
+      where: {
+        [Op.or]: [{ buyerId: userId }, { sellerId: userId }],
+      },
+      attributes: ["id", "chatId"],
+    });
+
+    const chatIds = chats
+      .flatMap((chat) => [chat.id, chat.chatId])
+      .filter((chatId) => chatId != null);
+
+    if (chatIds.length === 0) {
+      return success(res, { unreadCount: 0 });
+    }
+
+    const unreadCount = await ChatMessage.count({
+      where: {
+        chatId: { [Op.in]: chatIds },
+        senderId: { [Op.ne]: userId },
+        [Op.and]: [
+          { [Op.or]: [{ isRead: false }, { isRead: null }] },
+          { [Op.or]: [{ receiverId: userId }, { receiverId: null }] },
+        ],
+      },
+    });
+
+    return success(res, { unreadCount });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  sendMessage,
+  listMessages,
+  markAsRead,
+  getUnreadMessageCount,
+};
