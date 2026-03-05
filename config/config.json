@@ -1,7 +1,7 @@
 {
   "development": {
     "username": "postgres",
-    "password": "@Password123!",
+    "password": "Inno@123",
     "database": "easyplug_db",
     "host": "localhost",
     "dialect": "postgres",

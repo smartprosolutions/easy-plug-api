@@ -24,9 +24,9 @@ module.exports = {
         {
           userId: uuidv4(),
           title: "Mr",
-          firstName: "Admin",
-          lastName: "User",
-          email: "kamzen1994@gmail.com",
+          firstName: "Innocent",
+          lastName: "Hlongwane",
+          email: "innocent38318@gmail.com",
           dateOfBirth: null,
           idNumber: null,
           profilePicture: null,

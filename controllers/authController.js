@@ -11,7 +11,8 @@ const bcrypt = require("bcryptjs");
 const JWT_SECRET = process.env.JWT_SECRET || "change-me";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || "10", 10);
-const RESET_TOKEN_EXP = process.env.RESET_TOKEN_EXP || "1h";
+const RESET_TOKEN_EXP = process.env.RESET_TOKEN_EXP || "5m";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const sendEmail = require("../utils/email");
@@ -72,13 +73,15 @@ async function loginWithGoogle(req, res, next) {
       audience: GOOGLE_CLIENT_ID || undefined,
     });
     const payload = ticket.getPayload();
+    console.log(payload);
+    console.log(ticket);
     const email = payload.email;
 
     let user = await User.findOne({ where: { email } });
     if (!user) {
       // create a minimal user record for Google signup (no password stored)
       user = await User.create({
-        userId: payload.sub,
+       // userId: payload.sub,
         firstName: payload.given_name || "",
         lastName: payload.family_name || "",
         email,
@@ -618,26 +621,56 @@ async function registerSeller(req, res, next) {
 // In production, you should email this token (or a link containing it) to the user.
 async function forgotPassword(req, res, next) {
   try {
-    const { email } = req.body;
+    const { email, resetUrl, redirectUrl, frontendUrl } = req.body;
     if (!email)
       return res
         .status(400)
         .json({ success: false, message: "Email required" });
 
     const user = await User.findOne({ where: { email } });
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+    // Prevent account enumeration by returning success even when user is missing.
+    if (!user) {
+      return res.json({
+        success: true,
+        message: "If an account exists, a password reset link has been sent.",
+      });
+    }
 
     const resetToken = jwt.sign(
-      { id: user.id, email: user.email, reset: true },
+      {
+        id: user.userId,
+        email: user.email,
+        reset: true,
+        resetVersion: Number(user.resetTokenVersion || 0),
+      },
       JWT_SECRET,
       { expiresIn: RESET_TOKEN_EXP },
     );
 
-    // TODO: send resetToken via email to the user. For now, return in response for manual testing.
-    return res.json({ success: true, resetToken, expiresIn: RESET_TOKEN_EXP });
+    const baseResetUrl =
+      resetUrl || redirectUrl || frontendUrl || `${FRONTEND_URL}/reset-password`;
+    const separator = String(baseResetUrl).includes("?") ? "&" : "?";
+    const resetLink = `${baseResetUrl}${separator}token=${encodeURIComponent(
+      resetToken,
+    )}`;
+
+    const template = templates.passwordReset({
+      email: user.email,
+      resetLink,
+      expiresInMinutes: 5,
+    });
+
+    await sendEmail({
+      email: user.email,
+      subject: template.subject,
+      html: template.html,
+    });
+
+    return res.json({
+      success: true,
+      message: "If an account exists, a password reset link has been sent.",
+      expiresIn: RESET_TOKEN_EXP,
+    });
   } catch (err) {
     next(err);
   }
@@ -646,17 +679,25 @@ async function forgotPassword(req, res, next) {
 // Reset password using the reset token
 async function resetPassword(req, res, next) {
   try {
-    const { resetToken, newPassword } = req.body;
-    if (!resetToken || !newPassword)
+    const token = req.body?.resetToken || req.body?.token;
+    const newPassword = req.body?.newPassword || req.body?.password;
+
+    if (!token || !newPassword)
       return res.status(400).json({
         success: false,
-        message: "resetToken and newPassword required",
+        message: "token and password required",
       });
 
     let payload;
     try {
-      payload = jwt.verify(resetToken, JWT_SECRET);
+      payload = jwt.verify(token, JWT_SECRET);
     } catch (err) {
+      if (err.name === "TokenExpiredError") {
+        return res.status(400).json({
+          success: false,
+          message: "Reset token has expired. Please request a new link.",
+        });
+      }
       return res
         .status(400)
         .json({ success: false, message: "Invalid or expired reset token" });
@@ -673,8 +714,23 @@ async function resetPassword(req, res, next) {
         .status(404)
         .json({ success: false, message: "User not found" });
 
+    if (typeof payload.resetVersion === "undefined") {
+      return res.status(400).json({
+        success: false,
+        message: "Reset token is outdated. Please request a new link.",
+      });
+    }
+
+    if (Number(payload.resetVersion) !== Number(user.resetTokenVersion || 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset link has already been used. Please request a new link.",
+      });
+    }
+
     const hashed = await bcrypt.hash(newPassword, SALT_ROUNDS);
     user.passwordHash = hashed;
+    user.resetTokenVersion = Number(user.resetTokenVersion || 0) + 1;
     await user.save();
 
     return res.json({ success: true, message: "Password reset successful" });
