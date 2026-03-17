@@ -20,21 +20,9 @@ const getUploadFileFromRequest = (req) => {
   return null;
 };
 
-const isImageLike = (fileObj = {}) => {
-  const mime = String(fileObj.mimetype || fileObj.mimeType || "").toLowerCase();
-  const ext = String(fileObj.name || "")
-    .split(".")
-    .pop()
-    .toLowerCase();
-  return (
-    mime.startsWith("image/") ||
-    ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext)
-  );
-};
-
 const saveChatAttachment = async (fileObj, chatId) => {
   if (!fileObj) return null;
-  const folderName = isImageLike(fileObj) ? "chats_pictures" : "chats_documents";
+  const folderName = "chat_files";
   const targetDir = path.join(process.cwd(), "uploads", folderName, String(chatId));
   fs.mkdirSync(targetDir, { recursive: true });
 
