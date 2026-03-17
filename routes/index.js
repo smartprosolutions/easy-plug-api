@@ -16,6 +16,7 @@ const addressRoutes = require('./address');
 const wishlistRoutes = require('./wishlist');
 const notificationsRoutes = require('./notifications');
 const searchRoutes = require('./search');
+const locationShareRoutes = require('./locationShare');
 
 router.use('/auth', authRoutes);
 router.use('/subscriptions', subscriptionsRoutes);
@@ -32,5 +33,6 @@ router.use('/addresses', addressRoutes);
 router.use('/wishlist', wishlistRoutes);
 router.use('/notifications', notificationsRoutes);
 router.use('/search', searchRoutes);
+router.use('/location-shares', locationShareRoutes);
 
 module.exports = router;
