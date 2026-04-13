@@ -3,6 +3,7 @@
  * Date : 13 June 2023
  */
 
+const http = require("http");
 const express = require("express");
 const dotenv = require("dotenv");
 const morgan = require("morgan");
@@ -10,6 +11,7 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const fileUpload = require("express-fileupload");
 const path = require("path");
+const { initSocket } = require("./socket/socketServer");
 
 // initalize express application
 const app = express();
@@ -44,7 +46,10 @@ app.use(`${API_BASE_URL}`, AppRouter);
 
 app.use(ErrorMid);
 
-app.listen(PORT, () => {
+const httpServer = http.createServer(app);
+initSocket(httpServer);
+
+httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT} and version ${VERSION}`);
   sequelize.authenticate();
   console.log(`Database connected on port ${5432}`);

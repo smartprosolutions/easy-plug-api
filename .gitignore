@@ -30,9 +30,10 @@ dist/
 *.tsbuildinfo
 
 # Environment & config
-.env
-.env.*
-config/config.env
+# .env
+# .env.*
+# config/config.env
+# config/config.json
 
 # OS / Editor files
 .DS_Store

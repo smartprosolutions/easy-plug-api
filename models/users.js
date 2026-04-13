@@ -46,7 +46,6 @@ module.exports = (sequelize, DataTypes) => {
       },
       title: {
         type: DataTypes.STRING,
-        allowNull: false
       },
       firstName: {
         type: DataTypes.STRING,
@@ -61,6 +60,10 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         unique: true
       },
+      dateOfBirth: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+      },
       idNumber: {
         type: DataTypes.STRING,
         unique: true
@@ -70,7 +73,11 @@ module.exports = (sequelize, DataTypes) => {
       },
       passwordHash: {
         type: DataTypes.STRING,
-        allowNull: false
+      },
+      resetTokenVersion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
       },
       phone: {
         type: DataTypes.STRING,

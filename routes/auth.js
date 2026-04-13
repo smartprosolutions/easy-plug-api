@@ -10,7 +10,8 @@ const {
   forgotPassword,
   resetPassword,
   sendVerificationCode,
-  verifyCode
+  verifyCode,
+  sendTestEmail,
 } = require("../controllers/authController");
 const auth = require("../middleware/auth");
 
@@ -22,6 +23,7 @@ router.post("/register/seller", registerSeller);
 router.post("/login/google", loginWithGoogle);
 router.post("/send-code", sendVerificationCode);
 router.post("/verify-code", verifyCode);
+router.post("/test-email", sendTestEmail);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
 router.get("/me", auth, getLoggedInUser);

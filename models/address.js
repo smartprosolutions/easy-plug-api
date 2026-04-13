@@ -26,6 +26,7 @@ module.exports = (sequelize, DataTypes) => {
       latitude: DataTypes.DECIMAL,
       longitude: DataTypes.DECIMAL,
       accuracy: DataTypes.DECIMAL,
+      radius: DataTypes.DECIMAL,
       streetNumber: DataTypes.STRING,
       streetName: DataTypes.STRING,
       suburb: DataTypes.STRING,

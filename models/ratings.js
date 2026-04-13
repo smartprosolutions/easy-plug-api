@@ -8,30 +8,36 @@ module.exports = (sequelize, DataTypes) => {
      * The `models/index` file will call this method automatically.
      */
     static associate(models) {
+      this.belongsTo(models.listings, {
+        foreignKey: "listingId",
+        targetKey: "listingId",
+        as: "listing",
+      });
       this.belongsTo(models.users, {
         foreignKey: "userId",
         targetKey: "userId",
-        as: "user"
+        as: "user",
       });
       this.belongsTo(models.users, {
         foreignKey: "sellerId",
         targetKey: "userId",
-        as: "seller"
+        as: "seller",
       });
     }
   }
   ratings.init(
     {
       ratingId: DataTypes.INTEGER,
+      listingId: DataTypes.UUID,
       sellerId: DataTypes.UUID,
       userId: DataTypes.UUID,
       rating: DataTypes.INTEGER,
-      comment: DataTypes.TEXT
+      comment: DataTypes.TEXT,
     },
     {
       sequelize,
-      modelName: "ratings"
-    }
+      modelName: "ratings",
+    },
   );
   return ratings;
 };
