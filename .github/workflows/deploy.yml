@@ -1,0 +1,37 @@
+name: Deploy easy-plug-api
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy source files to VM via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: ".,!node_modules,!uploads,!.git"
+          target: /var/www/easy-plug-api/
+          rm: false
+
+      - name: Install dependencies & restart API
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /var/www/easy-plug-api
+            npm ci --omit=dev
+            pm2 restart easy-plug-api || pm2 start app.js --name easy-plug-api
+            pm2 save
