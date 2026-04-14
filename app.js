@@ -31,7 +31,7 @@ const VERSION = process.env.API_VERSION || "v1";
 const API_BASE_URL = `/api/${VERSION}`;
 const PORT = process.env.PORT || 8000;
 
-app.get("api/", (req, res, next) => {
+app.get("/api", (req, res, next) => {
   return res.status(200).json({
     success: true,
     message: "Yes, it is working"
