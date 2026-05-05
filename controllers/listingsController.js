@@ -13,8 +13,42 @@ const { Op } = require("sequelize");
 const { fail } = require("../utils/response");
 const { logActivity } = require("../middleware/activityLogger");
 const { createNotification } = require("./notificationsController");
+const { postListingToSocialMedia } = require("../services/socialMediaService");
 const path = require("path");
 const fs = require("fs");
+
+/**
+ * Fire-and-forget: post a newly created listing to social media platforms.
+ * Runs after the HTTP response is already sent, so errors never affect the seller.
+ */
+async function scheduleListingSocialPost(listing, sellerId, sellerEmail) {
+  try {
+    const seller = await User.findByPk(sellerId, {
+      attributes: ["userId", "firstName", "lastName", "email"],
+    });
+    const results = await postListingToSocialMedia(
+      listing,
+      seller || { email: sellerEmail },
+    );
+
+    // Persist results so the admin can see what was posted (or what failed)
+    const SocialPost = db.listingSocialPost;
+    if (!SocialPost) return; // migration not yet applied
+
+    const entries = Object.entries(results).map(([platform, result]) => ({
+      listingId: listing.listingId,
+      platform,
+      postId: result.postId || null,
+      postUrl: result.postUrl || null,
+      status: result.error ? "failed" : result.skipped ? "skipped" : "success",
+      error: result.error || null,
+    }));
+
+    await SocialPost.bulkCreate(entries);
+  } catch (err) {
+    console.error("[social] scheduleListingSocialPost error:", err.message);
+  }
+}
 
 function haversineDistanceKm(lat1, lon1, lat2, lon2) {
   const toRad = (v) => (v * Math.PI) / 180;
@@ -1068,7 +1102,12 @@ async function createListing(req, res, next) {
         return { listing: created };
       });
 
-      return res.status(201).json({ success: true, ...result });
+      res.status(201).json({ success: true, ...result });
+      // Fire-and-forget social media post after response is sent
+      scheduleListingSocialPost(result.listing, sellerId, sellerEmail).catch(
+        (e) => console.error("[social] createListing post failed:", e.message),
+      );
+      return;
     } catch (err) {
       // cleanup uploaded files on failure
       try {
@@ -1194,7 +1233,12 @@ async function createAdvertListing(req, res, next) {
         return { advert: created, sellerSubscription: sellerSub };
       });
 
-      return res.status(201).json({ success: true, ...result });
+      res.status(201).json({ success: true, ...result });
+      // Fire-and-forget social media post after response is sent
+      scheduleListingSocialPost(result.advert, sellerId, sellerEmail).catch(
+        (e) => console.error("[social] createAdvertListing post failed:", e.message),
+      );
+      return;
     } catch (err) {
       // cleanup uploaded files on failure
       try {
