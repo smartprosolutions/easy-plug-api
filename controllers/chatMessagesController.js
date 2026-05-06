@@ -219,7 +219,7 @@ async function sendMessage(req, res, next) {
       mimeType: attachment?.mimeType || null,
       locationLat: location?.lat ?? null,
       locationLng: location?.lng ?? null,
-      locationName: location?.name || null,
+      locationName: location?.name || req.body?.locationName || null,
       parentMessageId: resolvedReply?.parentMessageId || null,
       replyText: resolvedReply?.replyText || null,
       replySenderId: resolvedReply?.replySenderId || null,

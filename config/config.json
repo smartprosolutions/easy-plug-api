@@ -1,7 +1,7 @@
 {
   "development": {
-    "username": "admin",
-    "password": "@Password123!",
+    "username": "root",
+    "password": "password",
     "database": "easyplug_prod_db",
     "host": "127.0.0.1",
     "dialect": "postgres",
