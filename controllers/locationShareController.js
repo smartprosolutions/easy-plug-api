@@ -1,7 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
-const { locationShare: LocationShare } = require("../models");
+const { locationShare: LocationShare, users: Users } = require("../models");
 
 const ALLOWED_DURATIONS = [15, 30, 60, 120];
 
@@ -10,6 +10,7 @@ async function createShare(req, res, next) {
   try {
     const userId = req.user.id;
     const { durationMinutes } = req.body;
+    const { Op } = require("sequelize");
 
     if (!ALLOWED_DURATIONS.includes(Number(durationMinutes))) {
       return res.status(400).json({
@@ -18,8 +19,29 @@ async function createShare(req, res, next) {
       });
     }
 
+    const existingActiveShare = await LocationShare.findOne({
+      where: {
+        userId,
+        isActive: true,
+        expiresAt: { [Op.gt]: new Date() },
+      },
+      order: [["createdAt", "DESC"]],
+    });
+
+    if (existingActiveShare) {
+      return res.status(200).json({
+        success: true,
+        token: existingActiveShare.token,
+        expiresAt: existingActiveShare.expiresAt,
+        durationMinutes: existingActiveShare.durationMinutes,
+        alreadyActive: true,
+      });
+    }
+
     const token = crypto.randomBytes(24).toString("hex"); // 48-char hex
-    const expiresAt = new Date(Date.now() + Number(durationMinutes) * 60 * 1000);
+    const expiresAt = new Date(
+      Date.now() + Number(durationMinutes) * 60 * 1000,
+    );
 
     const share = await LocationShare.create({
       userId,
@@ -34,6 +56,7 @@ async function createShare(req, res, next) {
       token: share.token,
       expiresAt: share.expiresAt,
       durationMinutes: share.durationMinutes,
+      alreadyActive: false,
     });
   } catch (err) {
     next(err);
@@ -44,17 +67,42 @@ async function createShare(req, res, next) {
 async function getShare(req, res, next) {
   try {
     const { token } = req.params;
-    const share = await LocationShare.findOne({ where: { token } });
+    const share = await LocationShare.findOne({
+      where: { token },
+      include: [
+        {
+          model: Users,
+          as: "owner",
+          attributes: ["firstName", "lastName"],
+        },
+      ],
+    });
 
     if (!share) {
-      return res.status(404).json({ success: false, message: "Session not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Session not found" });
     }
+
+    const firstName = share.owner?.firstName || null;
+    const lastName = share.owner?.lastName || null;
+    const initials = [firstName, lastName]
+      .filter(Boolean)
+      .map((part) => String(part).trim().charAt(0).toUpperCase())
+      .join("");
+    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
 
     return res.json({
       success: true,
       isActive: share.isActive && new Date(share.expiresAt) > new Date(),
       expiresAt: share.expiresAt,
       durationMinutes: share.durationMinutes,
+      sharedBy: {
+        firstName,
+        lastName,
+        fullName: fullName || null,
+        initials: initials || null,
+      },
     });
   } catch (err) {
     next(err);
@@ -70,10 +118,14 @@ async function stopShare(req, res, next) {
     const share = await LocationShare.findOne({ where: { token } });
 
     if (!share) {
-      return res.status(404).json({ success: false, message: "Session not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Session not found" });
     }
     if (String(share.userId) !== String(userId)) {
-      return res.status(403).json({ success: false, message: "Not your session" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Not your session" });
     }
 
     await share.update({ isActive: false });

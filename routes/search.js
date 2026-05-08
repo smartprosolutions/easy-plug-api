@@ -4,6 +4,7 @@ const {
   searchListings,
   getSearchFilters,
   getSearchSuggestions,
+  getPopularSearches,
   saveSearch,
   listSavedSearches,
   deleteSavedSearch,
@@ -14,7 +15,6 @@ const { activityLogger } = require("../middleware/activityLogger");
 // Search listings with extensive filters
 router.get(
   "/",
-  auth,
   activityLogger("search", "listing"),
   searchListings
 );
@@ -24,6 +24,9 @@ router.get("/filters", getSearchFilters);
 
 // Get search suggestions/autocomplete
 router.get("/suggestions", getSearchSuggestions);
+
+// Get top popular search terms from saved searches
+router.get("/popular", getPopularSearches);
 
 // Save and manage saved searches
 router.post("/saved", auth, saveSearch);
