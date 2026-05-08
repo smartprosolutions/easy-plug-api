@@ -23,6 +23,11 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: "userId",
         sourceKey: "userId"
       });
+      // a user can have many saved searches
+      this.hasMany(models.savedSearch, {
+        foreignKey: "userId",
+        sourceKey: "userId",
+      });
       // transactions as buyer and seller
       this.hasMany(models.transactions, {
         foreignKey: "buyerId",
