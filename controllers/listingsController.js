@@ -282,6 +282,10 @@ async function listListings(req, res, next) {
     const bottomAds = ads.slice(adOffset + 8, adOffset + 16);
 
     const pageListings = [...topAds, ...stdItems, ...bottomAds];
+    const adPages = Math.ceil(ads.length / 16);
+    const standardPages = Math.ceil(standard.length / 24);
+    const totalPages = Math.max(adPages, standardPages);
+    const hasMore = page < totalPages;
     const ratingsTotals = pageListings.reduce(
       (acc, listing) => {
         const listingAvg = Number(listing.dataValues.averageRating || 0);
@@ -309,6 +313,15 @@ async function listListings(req, res, next) {
       success: true,
       listings: pageListings,
       page,
+      pageSize: 40,
+      totalPages,
+      hasMore,
+      pagination: {
+        page,
+        limit: 40,
+        totalPages,
+        hasMore,
+      },
       averageRating: overallAverageRating,
       ratingsCount: overallRatingsCount,
       counts: {
@@ -1118,7 +1131,6 @@ async function createAdvertListing(req, res, next) {
       expiresAt,
       expires_at,
       subscriptionId,
-      subscriptionTierUsersPerHour,
       pricingTier,
       url,
     } = req.body;
@@ -1136,19 +1148,15 @@ async function createAdvertListing(req, res, next) {
       }
     }
 
-    if (!subscriptionId) {
-      return res.status(400).json({
-        success: false,
-        message: "subscriptionId is required for advertisements",
-      });
-    }
-
-    // Validate subscription exists
-    const foundSubscription = await db.subscriptions.findByPk(subscriptionId);
-    if (!foundSubscription) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Subscription not found" });
+    // Subscription is optional while subscription functionality is disabled.
+    let foundSubscription = null;
+    if (subscriptionId) {
+      foundSubscription = await db.subscriptions.findByPk(subscriptionId);
+      if (!foundSubscription) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Subscription not found" });
+      }
     }
 
     // Handle file uploads (catalogue cover images)
@@ -1181,15 +1189,19 @@ async function createAdvertListing(req, res, next) {
       const result = await sequelize.transaction(async (t) => {
         const created = await Listing.create(payload, { transaction: t });
 
-        // Create sellerSubscription linking this advert
-        const sellerSub = await db.sellerSubscription.create(
-          {
-            sellerId: created.sellerId,
-            listingId: created.listingId,
-            subscriptionId: foundSubscription.subscriptionId || subscriptionId,
-          },
-          { transaction: t },
-        );
+        let sellerSub = null;
+        if (foundSubscription) {
+          // Create sellerSubscription link only when a subscription is supplied.
+          sellerSub = await db.sellerSubscription.create(
+            {
+              sellerId: created.sellerId,
+              listingId: created.listingId,
+              subscriptionId:
+                foundSubscription.subscriptionId || subscriptionId,
+            },
+            { transaction: t },
+          );
+        }
 
         return { advert: created, sellerSubscription: sellerSub };
       });
