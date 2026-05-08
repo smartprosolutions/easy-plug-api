@@ -4,7 +4,7 @@ const {
   users: User,
   address: Address,
   ratings: Rating,
-  activityLog: ActivityLog,
+  savedSearch: SavedSearch,
 } = db;
 const { Op } = require("sequelize");
 const { fail } = require("../utils/response");
@@ -15,7 +15,7 @@ const { logActivity } = require("../middleware/activityLogger");
  */
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const toRad = (v) => (v * Math.PI) / 180;
-  const R = 6371; // Earth's radius in km
+  const R = 6371;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
@@ -25,39 +25,18 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // Distance in km
+  return R * c;
 }
 
 /**
  * Comprehensive search endpoint with extensive filtering
- *
- * Query Parameters:
- * - q: Text search (searches title, description, keyFeatures)
- * - category: Filter by category
- * - minPrice: Minimum price
- * - maxPrice: Maximum price
- * - condition: new, used, refurbished
- * - type: sale, rent, etc.
- * - status: active, sold, inactive
- * - minRating: Minimum seller rating (1-5)
- * - latitude: User's latitude for distance search
- * - longitude: User's longitude for distance search
- * - maxDistance: Maximum distance in km
- * - postedSince: Filter by days ago (7, 30, etc.)
- * - dateFrom: Filter from specific date (YYYY-MM-DD)
- * - dateTo: Filter to specific date (YYYY-MM-DD)
- * - isAdvertisement: true/false
- * - sortBy: price_asc, price_desc, date_asc, date_desc, views, rating
- * - page: Page number (default 1)
- * - limit: Results per page (default 20, max 100)
  */
 async function searchListings(req, res, next) {
   try {
     const userId = req.user && req.user.id;
 
-    // Parse query parameters
     const {
-      q, // text search
+      q,
       category,
       minPrice,
       maxPrice,
@@ -77,71 +56,48 @@ async function searchListings(req, res, next) {
       limit = 20,
     } = req.query;
 
-    // Validate pagination
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
     const offset = (pageNum - 1) * limitNum;
+    const normalizedQuery = typeof q === "string" ? q.trim() : "";
 
-    // Build where clause for listings
     const where = {};
 
-    // Text search (title, description, keyFeatures)
-    if (q && q.trim()) {
-      const searchTerm = q.trim();
+    if (normalizedQuery) {
       where[Op.or] = [
-        { title: { [Op.iLike]: `%${searchTerm}%` } },
-        { description: { [Op.iLike]: `%${searchTerm}%` } },
-        // Search in keyFeatures array
+        { title: { [Op.iLike]: `%${normalizedQuery}%` } },
+        { description: { [Op.iLike]: `%${normalizedQuery}%` } },
         db.sequelize.where(
           db.sequelize.fn(
             "array_to_string",
             db.sequelize.col("keyFeatures"),
             " ",
           ),
-          { [Op.iLike]: `%${searchTerm}%` },
+          { [Op.iLike]: `%${normalizedQuery}%` },
         ),
       ];
     }
 
-    // Category filter
-    if (category) {
-      where.category = category;
-    }
+    if (category) where.category = category;
 
-    // Price range filter
     if (minPrice || maxPrice) {
       where.price = {};
-      if (minPrice) {
-        where.price[Op.gte] = parseFloat(minPrice);
-      }
-      if (maxPrice) {
-        where.price[Op.lte] = parseFloat(maxPrice);
-      }
+      if (minPrice) where.price[Op.gte] = parseFloat(minPrice);
+      if (maxPrice) where.price[Op.lte] = parseFloat(maxPrice);
     }
 
-    // Condition filter
-    if (condition) {
-      where.condition = condition;
-    }
-
-    // Type filter
-    if (type) {
-      where.type = type;
-    }
-
-    // Status filter (default to active only)
+    if (condition) where.condition = condition;
+    if (type) where.type = type;
     if (status) {
       where.status = status;
     } else {
-      where.status = "active"; // Default: only show active listings
+      where.status = "active";
     }
 
-    // Advertisement filter
     if (isAdvertisement !== undefined) {
       where.isAdvertisement = isAdvertisement === "true";
     }
 
-    // Date filters
     if (postedSince) {
       const daysAgo = parseInt(postedSince, 10);
       const date = new Date();
@@ -149,15 +105,10 @@ async function searchListings(req, res, next) {
       where.createdAt = { [Op.gte]: date };
     } else if (dateFrom || dateTo) {
       where.createdAt = {};
-      if (dateFrom) {
-        where.createdAt[Op.gte] = new Date(dateFrom);
-      }
-      if (dateTo) {
-        where.createdAt[Op.lte] = new Date(dateTo);
-      }
+      if (dateFrom) where.createdAt[Op.gte] = new Date(dateFrom);
+      if (dateTo) where.createdAt[Op.lte] = new Date(dateTo);
     }
 
-    // Build order clause
     let order = [];
     switch (sortBy) {
       case "price_asc":
@@ -169,19 +120,18 @@ async function searchListings(req, res, next) {
       case "date_asc":
         order = [["createdAt", "ASC"]];
         break;
-      case "date_desc":
-      default:
-        order = [["createdAt", "DESC"]];
-        break;
       case "views":
         order = [["views", "DESC"]];
         break;
       case "title":
         order = [["title", "ASC"]];
         break;
+      case "date_desc":
+      default:
+        order = [["createdAt", "DESC"]];
+        break;
     }
 
-    // Fetch listings with seller info and address
     const { rows: listings, count } = await Listing.findAndCountAll({
       where,
       include: [
@@ -218,15 +168,11 @@ async function searchListings(req, res, next) {
       distinct: true,
     });
 
-    // If seller rating filter is applied, fetch ratings and filter
     let filteredListings = listings;
     if (minRating) {
       const minRatingNum = parseFloat(minRating);
-
-      // Get seller IDs from listings
       const sellerIds = [...new Set(listings.map((l) => l.sellerId))];
 
-      // Fetch average ratings for all sellers
       const sellerRatings = await Rating.findAll({
         where: { sellerId: { [Op.in]: sellerIds } },
         attributes: [
@@ -237,25 +183,21 @@ async function searchListings(req, res, next) {
         raw: true,
       });
 
-      // Create a map of seller ratings
       const ratingMap = {};
       sellerRatings.forEach((r) => {
         ratingMap[r.sellerId] = parseFloat(r.avgRating || 0);
       });
 
-      // Filter listings by seller rating
       filteredListings = listings.filter((listing) => {
         const sellerRating = ratingMap[listing.sellerId] || 0;
         return sellerRating >= minRatingNum;
       });
 
-      // Attach ratings to listings
       filteredListings.forEach((listing) => {
         listing.dataValues.sellerAvgRating = ratingMap[listing.sellerId] || 0;
       });
     }
 
-    // If location filter is applied, calculate distances and filter
     if (latitude && longitude && maxDistance) {
       const userLat = parseFloat(latitude);
       const userLon = parseFloat(longitude);
@@ -275,14 +217,13 @@ async function searchListings(req, res, next) {
               parseFloat(sellerAddr.latitude),
               parseFloat(sellerAddr.longitude),
             );
-            listing.dataValues.distance = Math.round(distance * 10) / 10; // Round to 1 decimal
+            listing.dataValues.distance = Math.round(distance * 10) / 10;
             return distance <= maxDistKm;
           }
         }
         return false;
       });
 
-      // Sort by distance if location filter is used and sortBy is rating
       if (sortBy === "distance") {
         filteredListings.sort(
           (a, b) =>
@@ -292,18 +233,13 @@ async function searchListings(req, res, next) {
       }
     }
 
-    // Calculate total pages based on filtered results
     const totalFiltered = filteredListings.length;
-    const totalPages = Math.ceil(
-      (minRating || (latitude && longitude && maxDistance)
-        ? totalFiltered
-        : count) / limitNum,
-    );
+    const totalPages = Math.ceil((count || 0) / limitNum);
+    const hasMore = pageNum < totalPages;
 
-    // Log search activity
     if (userId && req) {
       logActivity(userId, "search", "listing", null, req, {
-        searchTerm: q,
+        searchTerm: normalizedQuery,
         filters: {
           category,
           minPrice,
@@ -318,21 +254,45 @@ async function searchListings(req, res, next) {
       });
     }
 
+    if (filteredListings.length > 0) {
+      const uniqueRowMap = new Map();
+
+      filteredListings.forEach((listing) => {
+        const listingId = listing?.listingId || listing?.id;
+        if (!listingId) return;
+
+        const row = {
+          listingId,
+          userId: userId || null,
+        };
+
+        const key = `${row.userId || "guest"}:${row.listingId}`;
+        if (!uniqueRowMap.has(key)) {
+          uniqueRowMap.set(key, row);
+        }
+      });
+
+      const rowsToSave = [...uniqueRowMap.values()].slice(0, 100);
+
+      if (rowsToSave.length > 0) {
+        SavedSearch.bulkCreate(rowsToSave).catch((error) => {
+          console.error("Failed to save fetched search:", error);
+        });
+      }
+    }
+
     return res.json({
       success: true,
       listings: filteredListings,
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total:
-          minRating || (latitude && longitude && maxDistance)
-            ? totalFiltered
-            : count,
+        total: count,
         totalPages,
-        hasMore: pageNum < totalPages,
+        hasMore,
       },
       filters: {
-        q,
+        q: normalizedQuery,
         category,
         minPrice,
         maxPrice,
@@ -355,12 +315,8 @@ async function searchListings(req, res, next) {
   }
 }
 
-/**
- * Get available filter options (categories, conditions, price ranges, etc.)
- */
 async function getSearchFilters(req, res, next) {
   try {
-    // Get unique categories
     const categories = await Listing.findAll({
       attributes: [
         "category",
@@ -372,7 +328,6 @@ async function getSearchFilters(req, res, next) {
       raw: true,
     });
 
-    // Get unique conditions
     const conditions = await Listing.findAll({
       attributes: [
         "condition",
@@ -386,7 +341,6 @@ async function getSearchFilters(req, res, next) {
       raw: true,
     });
 
-    // Get price range
     const priceRange = await Listing.findOne({
       attributes: [
         [db.sequelize.fn("MIN", db.sequelize.col("price")), "minPrice"],
@@ -396,7 +350,6 @@ async function getSearchFilters(req, res, next) {
       raw: true,
     });
 
-    // Get unique types
     const types = await Listing.findAll({
       attributes: [
         "type",
@@ -452,9 +405,6 @@ async function getSearchFilters(req, res, next) {
   }
 }
 
-/**
- * Get search suggestions/autocomplete
- */
 async function getSearchSuggestions(req, res, next) {
   try {
     const { q } = req.query;
@@ -465,7 +415,6 @@ async function getSearchSuggestions(req, res, next) {
 
     const searchTerm = q.trim();
 
-    // Get matching titles (limit 10)
     const suggestions = await Listing.findAll({
       attributes: ["listingId", "title", "price", "category"],
       where: {
@@ -473,7 +422,7 @@ async function getSearchSuggestions(req, res, next) {
         status: "active",
       },
       limit: 10,
-      order: [["views", "DESC"]], // Suggest popular items first
+      order: [["views", "DESC"]],
     });
 
     return res.json({
@@ -490,49 +439,144 @@ async function getSearchSuggestions(req, res, next) {
   }
 }
 
+async function getPopularSearches(req, res, next) {
+  try {
+    const grouped = await SavedSearch.findAll({
+      attributes: [
+        "listingId",
+        [db.sequelize.fn("COUNT", db.sequelize.col("listingId")), "count"],
+      ],
+      group: ["listingId"],
+      order: [
+        [db.sequelize.fn("COUNT", db.sequelize.col("listingId")), "DESC"],
+      ],
+      // Pull more than 4 so we can collapse duplicate titles and still return 4 unique terms.
+      limit: 200,
+      raw: true,
+    });
+
+    const topListingIds = grouped.map((row) => row.listingId).filter(Boolean);
+    const counts = new Map(
+      grouped.map((row) => [row.listingId, Number(row.count) || 0]),
+    );
+
+    if (topListingIds.length === 0) {
+      return res.json({
+        success: true,
+        popularSearches: [],
+        popularListings: [],
+      });
+    }
+
+    const listings = await Listing.findAll({
+      where: {
+        listingId: { [Op.in]: topListingIds },
+        status: "active",
+      },
+      attributes: [
+        "listingId",
+        "title",
+        "category",
+        "images",
+        "isAdvertisement",
+      ],
+      raw: true,
+    });
+
+    const listingMap = new Map(listings.map((item) => [item.listingId, item]));
+
+    const popularListings = topListingIds
+      .map((listingId) => {
+        const listing = listingMap.get(listingId);
+        if (!listing) return null;
+
+        return {
+          listingId,
+          title: listing.title,
+          category: listing.category,
+          image: Array.isArray(listing.images)
+            ? listing.images[0] || null
+            : null,
+          isAdvertisement: Boolean(listing.isAdvertisement),
+          count: counts.get(listingId) || 0,
+        };
+      })
+      .filter(Boolean);
+
+    const termMap = new Map();
+    popularListings.forEach((item) => {
+      const term = String(item.title || "").trim();
+      if (!term) return;
+
+      const key = term.toLowerCase();
+      const existing = termMap.get(key);
+
+      if (!existing) {
+        termMap.set(key, {
+          term,
+          listingId: item.listingId,
+          count: item.count,
+          popularListing: item,
+        });
+        return;
+      }
+
+      existing.count += item.count;
+      if ((item.count || 0) > (existing.popularListing?.count || 0)) {
+        existing.listingId = item.listingId;
+        existing.popularListing = item;
+      }
+    });
+
+    const uniqueTerms = [...termMap.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
+
+    const uniquePopularListings = uniqueTerms
+      .map((entry) => ({
+        ...entry.popularListing,
+        listingId: entry.listingId,
+        count: entry.count,
+        title: entry.term,
+      }))
+      .filter(Boolean);
+
+    const popularSearches = uniqueTerms.map((entry) => ({
+      term: entry.term,
+      listingId: entry.listingId,
+      count: entry.count,
+    }));
+
+    return res.json({
+      success: true,
+      popularSearches,
+      popularListings: uniquePopularListings,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function saveSearch(req, res, next) {
   try {
     const userId = req.user && req.user.id;
     if (!userId) return fail(res, "User not authenticated", 401);
 
-    const { name, filters } = req.body || {};
+    const { listingId } = req.body || {};
+    if (!listingId) return fail(res, "listingId is required", 400);
 
-    let normalizedFilters = filters;
-    if (!normalizedFilters || typeof normalizedFilters !== "object") {
-      normalizedFilters = {};
-      for (const [key, value] of Object.entries(req.body || {})) {
-        if (key !== "name") normalizedFilters[key] = value;
-      }
-    }
-
-    if (!normalizedFilters || Object.keys(normalizedFilters).length === 0) {
-      return fail(res, "filters are required", 400);
-    }
-
-    const saved = await ActivityLog.create({
+    const saved = await SavedSearch.create({
       userId,
-      action: "saved_search",
-      entityType: "search",
-      metadata: {
-        name: name || null,
-        filters: normalizedFilters,
-      },
-      ipAddress:
-        req.headers["x-forwarded-for"]?.split(",")[0] ||
-        req.connection.remoteAddress ||
-        req.socket.remoteAddress ||
-        null,
-      userAgent: req.headers["user-agent"] || null,
+      listingId,
     });
 
     return res.status(201).json({
       success: true,
       message: "Search saved successfully",
       savedSearch: {
-        savedSearchId: saved.activityId,
+        savedSearchId: saved.savedSearchId,
         userId: saved.userId,
-        name: saved.metadata?.name || null,
-        filters: saved.metadata?.filters || {},
+        listingId: saved.listingId,
         createdAt: saved.createdAt,
         updatedAt: saved.updatedAt,
       },
@@ -554,22 +598,17 @@ async function listSavedSearches(req, res, next) {
     );
     const offset = (page - 1) * pageSize;
 
-    const { rows, count } = await ActivityLog.findAndCountAll({
-      where: {
-        userId,
-        action: "saved_search",
-        entityType: "search",
-      },
+    const { rows, count } = await SavedSearch.findAndCountAll({
+      where: { userId },
       order: [["createdAt", "DESC"]],
       limit: pageSize,
       offset,
     });
 
     const savedSearches = rows.map((row) => ({
-      savedSearchId: row.activityId,
+      savedSearchId: row.savedSearchId,
       userId: row.userId,
-      name: row.metadata?.name || null,
-      filters: row.metadata?.filters || {},
+      listingId: row.listingId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }));
@@ -595,12 +634,10 @@ async function deleteSavedSearch(req, res, next) {
     const { savedSearchId } = req.params;
     if (!savedSearchId) return fail(res, "savedSearchId is required", 400);
 
-    const deleted = await ActivityLog.destroy({
+    const deleted = await SavedSearch.destroy({
       where: {
-        activityId: savedSearchId,
+        savedSearchId,
         userId,
-        action: "saved_search",
-        entityType: "search",
       },
     });
 
@@ -621,6 +658,7 @@ module.exports = {
   searchListings,
   getSearchFilters,
   getSearchSuggestions,
+  getPopularSearches,
   saveSearch,
   listSavedSearches,
   deleteSavedSearch,
