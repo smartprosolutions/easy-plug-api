@@ -1,11 +1,118 @@
-const { users: User } = require("../models");
+const {
+  users: User,
+  sellerInfo: SellerInfo,
+  listings: Listing,
+  transactions: Transaction,
+} = require("../models");
+const { fn, col } = require("sequelize");
 const path = require("path");
 const fs = require("fs");
+
+async function getUserManagementData(req, res, next) {
+  try {
+    const [users, sellerInfos, listingCounts, buyerOrderCounts] =
+      await Promise.all([
+        User.findAll({
+          attributes: { exclude: ["passwordHash"] },
+          order: [["createdAt", "DESC"]],
+        }),
+        SellerInfo.findAll({ raw: true }),
+        Listing.findAll({
+          attributes: ["sellerId", [fn("COUNT", col("listingId")), "count"]],
+          group: ["sellerId"],
+          raw: true,
+        }),
+        Transaction.findAll({
+          attributes: ["buyerId", [fn("COUNT", col("transactionId")), "count"]],
+          group: ["buyerId"],
+          raw: true,
+        }),
+      ]);
+
+    const sellerInfoByUserId = new Map(
+      sellerInfos.map((info) => [String(info.userId), info]),
+    );
+
+    const listingCountBySellerId = new Map(
+      listingCounts.map((item) => [
+        String(item.sellerId),
+        Number(item.count || 0),
+      ]),
+    );
+
+    const orderCountByBuyerId = new Map(
+      buyerOrderCounts.map((item) => [
+        String(item.buyerId),
+        Number(item.count || 0),
+      ]),
+    );
+
+    const admins = [];
+    const sellers = [];
+    const buyers = [];
+
+    for (const user of users) {
+      const userType = String(user.userType || "").toLowerCase();
+      const userId = String(user.userId);
+      const base = {
+        id: user.userId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        status: String(user.status || "inactive").toLowerCase(),
+        dateCreated: user.createdAt,
+        dateUpdated: user.updatedAt,
+      };
+
+      if (userType.includes("admin")) {
+        admins.push({
+          ...base,
+          role: user.userType || "Admin",
+        });
+        continue;
+      }
+
+      if (userType.includes("seller")) {
+        const info = sellerInfoByUserId.get(userId);
+        sellers.push({
+          ...base,
+          businessName:
+            info?.businessName ||
+            `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+            "Business",
+          verified: Boolean(info?.verified),
+          status: String(
+            info?.status || user.status || "pending",
+          ).toLowerCase(),
+          listings: listingCountBySellerId.get(userId) || 0,
+        });
+        continue;
+      }
+
+      buyers.push({
+        ...base,
+        phone: user.phone || "-",
+        orders: orderCountByBuyerId.get(userId) || 0,
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        admins,
+        sellers,
+        users: buyers,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
 
 async function listUsers(req, res, next) {
   try {
     const users = await User.findAll({
-      attributes: { exclude: ["passwordHash"] }
+      attributes: { exclude: ["passwordHash"] },
     });
     return res.json({ success: true, users });
   } catch (err) {
@@ -17,7 +124,7 @@ async function getUser(req, res, next) {
   try {
     const { id } = req.params;
     const user = await User.findByPk(id, {
-      attributes: { exclude: ["passwordHash"] }
+      attributes: { exclude: ["passwordHash"] },
     });
     if (!user)
       return res
@@ -39,6 +146,44 @@ async function updateUser(req, res, next) {
         .json({ success: false, message: "User not found" });
     await user.update(req.body);
     return res.json({ success: true, user });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function updateUserStatus(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || typeof status !== "string") {
+      return res
+        .status(400)
+        .json({ success: false, message: "status is required" });
+    }
+
+    const normalizedStatus = status.trim().toLowerCase();
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    await user.update({ status: normalizedStatus });
+
+    const userType = String(user.userType || "").toLowerCase();
+    if (userType.includes("seller")) {
+      const info = await SellerInfo.findOne({ where: { userId: id } });
+      if (info) {
+        await info.update({ status: normalizedStatus });
+      }
+    }
+
+    const sanitized = user.toJSON();
+    delete sanitized.passwordHash;
+
+    return res.json({ success: true, user: sanitized });
   } catch (err) {
     next(err);
   }
@@ -124,7 +269,7 @@ async function uploadProfilePicture(req, res, next) {
     const fullPath = path.join(destDir, safe);
 
     await new Promise((resolve, reject) =>
-      fileObj.mv(fullPath, (err) => (err ? reject(err) : resolve()))
+      fileObj.mv(fullPath, (err) => (err ? reject(err) : resolve())),
     );
 
     user.profilePicture = safe;
@@ -134,8 +279,8 @@ async function uploadProfilePicture(req, res, next) {
       success: true,
       filename: safe,
       url: `/uploads/pictures/${encodeURIComponent(
-        user.email
-      )}/${encodeURIComponent(safe)}`
+        user.email,
+      )}/${encodeURIComponent(safe)}`,
     });
   } catch (err) {
     next(err);
@@ -143,10 +288,12 @@ async function uploadProfilePicture(req, res, next) {
 }
 
 module.exports = {
+  getUserManagementData,
   listUsers,
   getUser,
   updateUser,
+  updateUserStatus,
   deleteUser,
   updateMe,
-  uploadProfilePicture
+  uploadProfilePicture,
 };
