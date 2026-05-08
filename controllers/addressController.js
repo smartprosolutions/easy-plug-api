@@ -82,9 +82,90 @@ async function getMyAddress(req, res, next) {
   }
 }
 
+// update an authenticated user's address by id
+async function updateAddressById(req, res, next) {
+  try {
+    const userId = req.user && req.user.id;
+    const { addressId } = req.params;
+
+    const addr = await Address.findOne({ where: { addressId, userId } });
+    if (!addr) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Address not found" });
+    }
+
+    const payload = { ...req.body };
+    delete payload.userId;
+    delete payload.addressId;
+
+    await addr.update(payload);
+    return res.json({ success: true, address: addr });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// update an authenticated user's latest address
+async function updateMyAddress(req, res, next) {
+  try {
+    const userId = req.user && req.user.id;
+
+    const addr = await Address.findOne({
+      where: { userId },
+      order: [["createdAt", "DESC"]],
+    });
+
+    if (!addr) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Address not found" });
+    }
+
+    const payload = { ...req.body };
+    delete payload.userId;
+    delete payload.addressId;
+
+    await addr.update(payload);
+    return res.json({ success: true, address: addr });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// delete an authenticated user's address by id or latest address
+async function deleteMyAddress(req, res, next) {
+  try {
+    const userId = req.user && req.user.id;
+    const { addressId } = req.params;
+
+    const where = { userId };
+    if (addressId) where.addressId = addressId;
+
+    const addr = await Address.findOne({
+      where,
+      order: [["createdAt", "DESC"]],
+    });
+
+    if (!addr) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Address not found" });
+    }
+
+    await addr.destroy();
+    return res.json({ success: true, message: "Address deleted" });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   listAddresses,
   createAddress,
   createAddressByBrowser,
   getMyAddress,
+  updateAddressById,
+  updateMyAddress,
+  deleteMyAddress,
 };
